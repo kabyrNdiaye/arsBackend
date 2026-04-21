@@ -1,0 +1,140 @@
+﻿
+========================================
+Testing Professional Registration
+========================================
+HTTP Status Code: 200
+Response:
+{
+    "success": true,
+    "access_token": "1|wMMJRwSYW9K8uFYEP50L5inenuTs81nWWLYBnFzMcbe5880a",
+    "token_type": "Bearer",
+    "user": {
+        "prenom": "Jean",
+        "nom": "Dupont",
+        "email": "prof_1770645144@example.com",
+        "role": "professionnel",
+        "telephone": "+221771234567",
+        "adresse": null,
+        "code_postal": "12000",
+        "ville": null,
+        "updated_at": "2026-02-09T13:52:25.000000Z",
+        "created_at": "2026-02-09T13:52:25.000000Z",
+        "id": 1,
+        "structure": null,
+        "professionnel": {
+            "id": 1,
+            "user_id": 1,
+            "date_naissance": "1990-01-01T00:00:00.000000Z",
+            "lieu_naissance": "Dakar",
+            "diplome": "Master en Soins Infirmiers",
+            "annees_experience": 5,
+            "specialites": [
+                "Soins infirmiers",
+                "G├®riatrie"
+            ],
+            "photo_profil_path": null,
+            "diplome_path": null,
+            "certificat_medical_path": null,
+            "permis_conduire_path": null,
+            "statut_validation": "en_attente",
+            "created_at": "2026-02-09T13:52:25.000000Z",
+            "updated_at": "2026-02-09T13:52:25.000000Z",
+            "adresse": null,
+            "codePostal": null,
+            "ville": null,
+            "fonction": null
+        },
+        "date_naissance": "1990-01-01T00:00:00.000000Z",
+        "lieu_naissance": "Dakar",
+        "diplome": "Master en Soins Infirmiers",
+        "annees_experience": 5,
+        "specialites": [
+            "Soins infirmiers",
+            "G├®riatrie"
+        ],
+        "photo_profil_path": null,
+        "diplome_path": null,
+        "certificat_medical_path": null,
+        "permis_conduire_path": null,
+        "statut_validation": "en_attente",
+        "codePostal": null,
+        "fonction": null
+    }
+}
+
+Ô£ô Registration successful!
+User ID: 1
+Role: professionnel
+Email: prof_1770645144@example.com
+
+========================================
+Testing Client Registration
+========================================
+HTTP Status Code: 200
+Response:
+{
+    "success": true,
+    "access_token": "2|41c3SIGK2QoKkgFQa6H5JIRU1Dhu2Gq0MLgenb6Oadb78087",
+    "token_type": "Bearer",
+    "user": {
+        "prenom": "Marie",
+        "nom": "Martin",
+        "email": "client_1770645144@example.com",
+        "role": "client",
+        "telephone": "+221771234568",
+        "adresse": "456 Avenue Test",
+        "code_postal": "12001",
+        "ville": "Dakar",
+        "updated_at": "2026-02-09T13:52:27.000000Z",
+        "created_at": "2026-02-09T13:52:27.000000Z",
+        "id": 2,
+        "structure": {
+            "id": 1,
+            "user_id": 2,
+            "nom_etablissement": "Maison de Retraite Test",
+            "type_etablissement": "EHPAD",
+            "capacite": 50,
+            "fonction": "Directeur",
+            "repas": [
+                "Petit-d├®jeuner",
+                "D├®jeuner",
+                "D├«ner"
+            ],
+            "regimes": [
+                "Normal",
+                "Sans sel"
+            ],
+            "contrat_prestation_path": null,
+            "plan_locaux_path": null,
+            "reglement_interieur_path": null,
+            "created_at": "2026-02-09T13:52:27.000000Z",
+            "updated_at": "2026-02-09T13:52:27.000000Z"
+        },
+        "professionnel": null,
+        "nom_etablissement": "Maison de Retraite Test",
+        "type_etablissement": "EHPAD",
+        "capacite": 50,
+        "fonction": "Directeur",
+        "repas": [
+            "Petit-d├®jeuner",
+            "D├®jeuner",
+            "D├«ner"
+        ],
+        "regimes": [
+            "Normal",
+            "Sans sel"
+        ],
+        "contrat_prestation_path": null,
+        "plan_locaux_path": null,
+        "reglement_interieur_path": null
+    }
+}
+
+Ô£ô Registration successful!
+User ID: 2
+Role: client
+Email: client_1770645144@example.com
+
+========================================
+Tests completed!
+========================================

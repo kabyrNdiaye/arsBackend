@@ -1,0 +1,72 @@
+[
+    {
+        "id": 26,
+        "nom": "Filet au ratin",
+        "type": "plat",
+        "description": "On melange des filets avec des mais doux plus de l'olive",
+        "ingredients": "[{\"nom\":\"filets\",\"quantite\":50,\"prix\":2},{\"nom\":\"mais\",\"quantite\":25,\"prix\":1},{\"nom\":\"olive\",\"quantite\":9,\"prix\":1}]",
+        "temps_preparation": "150",
+        "created_by": null,
+        "regimes": "[\"Diab\\u00e9tique\",\"Standard\",\"Sans gluten\"]",
+        "textures": "[\"Normal\",\"Hach\\u00e9\"]",
+        "created_at": "2026-03-26 13:31:06",
+        "updated_at": "2026-03-26 13:31:06",
+        "meal_types": null
+    },
+    {
+        "id": 25,
+        "nom": "boratin",
+        "type": "entree",
+        "description": "Il faut mettre des oeufs plus des oignons et du riz",
+        "ingredients": "[{\"nom\":\"3 oeufs,5 kilos oignons,7kilo riz\",\"quantite\":1,\"prix\":0}]",
+        "temps_preparation": "60 min",
+        "created_by": null,
+        "regimes": "[\"V\\u00e9g\\u00e9talien\"]",
+        "textures": "[\"Mix\\u00e9\"]",
+        "created_at": "2026-03-26 12:47:27",
+        "updated_at": "2026-03-26 12:47:27",
+        "meal_types": null
+    },
+    {
+        "id": 24,
+        "nom": "\u00cele Flottante Onctueuse",
+        "type": "dessert",
+        "description": "Blancs d'\u0153ufs en neige sur cr\u00e8me anglaise.",
+        "ingredients": "[{\"nom\":\"\\u0152ufs, Lait, Sucre, Vanille.\",\"quantite\":1,\"prix\":0}]",
+        "temps_preparation": "30 min",
+        "created_by": null,
+        "regimes": "[\"V\\u00e9g\\u00e9tarien\",\"Sans gluten\"]",
+        "textures": "[\"Normal\",\"Mix\\u00e9\"]",
+        "created_at": "2026-02-25 14:26:59",
+        "updated_at": "2026-02-25 14:26:59",
+        "meal_types": null
+    },
+    {
+        "id": 23,
+        "nom": "Compote de Pommes et Vanille",
+        "type": "dessert",
+        "description": "Pommes fondantes parfum\u00e9es \u00e0 la vanille Bourbon.",
+        "ingredients": "[{\"nom\":\"Pommes, Sucre vanill\\u00e9, B\\u00e2ton de vanille.\",\"quantite\":1,\"prix\":0}]",
+        "temps_preparation": "25 min",
+        "created_by": null,
+        "regimes": "[\"Sans sel\",\"V\\u00e9g\\u00e9talien\",\"Sans gluten\"]",
+        "textures": "[\"Mix\\u00e9\",\"Moulin\\u00e9\"]",
+        "created_at": "2026-02-25 14:26:59",
+        "updated_at": "2026-02-25 14:26:59",
+        "meal_types": null
+    },
+    {
+        "id": 22,
+        "nom": "Mousse au Chocolat L\u00e9g\u00e8re",
+        "type": "dessert",
+        "description": "Dessert a\u00e9rien au chocolat noir 70%.",
+        "ingredients": "[{\"nom\":\"Chocolat noir, \\u0152ufs, une pinc\\u00e9e de sel.\",\"quantite\":1,\"prix\":0}]",
+        "temps_preparation": "20 min (+ 4h repos)",
+        "created_by": null,
+        "regimes": "[\"Standard\",\"V\\u00e9g\\u00e9tarien\"]",
+        "textures": "[\"Mix\\u00e9\"]",
+        "created_at": "2026-02-25 14:26:59",
+        "updated_at": "2026-02-25 14:26:59",
+        "meal_types": null
+    }
+]

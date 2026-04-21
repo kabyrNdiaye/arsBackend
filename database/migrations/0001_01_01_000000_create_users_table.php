@@ -13,12 +13,28 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
+            
+            // Champs communs (obligatoires)
+            $table->string('name')->nullable(); // Make nullable directly
+            $table->string('prenom');
+            $table->string('nom');
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            $table->enum('role', ['client', 'professionnel', 'admin'])->default('client');
+            
+            // Coordonnées (optionnelles)
+            $table->string('telephone', 20)->nullable();
+            $table->text('adresse')->nullable();
+            $table->string('code_postal', 10)->nullable();
+            $table->string('ville', 100)->nullable();
+            
             $table->rememberToken();
             $table->timestamps();
+            
+            // Index pour améliorer les performances
+            $table->index('role');
+            $table->index('email');
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {

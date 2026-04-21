@@ -1,0 +1,571 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Models\Professionnel;
+use App\Models\Structure;
+use App\Models\Document;
+use App\Http\Resources\UserResource;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+
+class AuthController extends Controller
+{
+    /**
+     * Inscription d'un nouvel utilisateur
+     */
+    public function register(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            // Champs obligatoires
+            'prenom' => 'required|string|max:255',
+            'nom' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:6|confirmed',
+            'role' => ['required', Rule::in(['client', 'professionnel'])],
+            
+            // Champs optionnels communs
+            'telephone' => 'nullable|string|max:20',
+            'adresse' => 'nullable|string',
+            'code_postal' => 'nullable|string|max:10',
+            'ville' => 'nullable|string|max:100',
+            
+            // Champs CLIENT
+            'nom_etablissement' => 'nullable|string|max:255',
+            'telephone_etablissement' => 'nullable|string|max:20',
+            'type_etablissement' => 'nullable|string|max:100',
+            'capacite' => 'nullable|integer',
+            'fonction' => 'nullable|string|max:100',
+            // Validation des fichiers (accepte fichier ou string pour compatibilité)
+            'contrat_prestation_path' => 'nullable', 
+            'plan_locaux_path' => 'nullable',
+            'reglement_interieur_path' => 'nullable',
+            
+            // Champs PROFESSIONNEL
+            'date_naissance' => 'nullable|date',
+            'diplome' => 'nullable|string|max:255',
+            'annees_experience' => 'nullable|integer',
+            'specialites' => 'nullable|array',
+            'photo_profil_path' => 'nullable',
+            'diplome_path' => 'nullable',
+            'certificat_medical_path' => 'nullable',
+            'permis_conduire_path' => 'nullable',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+        \Illuminate\Support\Facades\Log::info('Tentative d\'inscription', [
+            'role' => $request->role,
+            'email' => $request->email,
+            'files' => array_keys($request->allFiles()),
+            'data' => $request->except(['password', 'password_confirmation'])
+        ]);
+        DB::beginTransaction();
+
+            // Gestion de l'upload des fichiers
+            $filePaths = [];
+            $filesToUpload = [
+                'contrat_prestation_path' => 'documents/clients',
+                'plan_locaux_path' => 'documents/clients',
+                'reglement_interieur_path' => 'documents/clients',
+                'photo_profil_path' => 'images/profils',
+                'diplome_path' => 'documents/professionnels',
+                'certificat_medical_path' => 'documents/professionnels',
+                'permis_conduire_path' => 'documents/professionnels',
+            ];
+
+            foreach ($filesToUpload as $field => $path) {
+                if ($request->hasFile($field)) {
+                    $files = $request->file($field);
+                    if (is_array($files)) {
+                        // Si c'est un tableau de fichiers (ex: diplome_path[$i])
+                        $paths = [];
+                        foreach ($files as $index => $file) {
+                            $filename = time() . '_' . $field . '_' . $index . '.' . $file->getClientOriginalExtension();
+                            $storedPath = $file->storeAs($path, $filename, 'public');
+                            $paths[] = $storedPath;
+                        }
+                        $filePaths[$field] = $paths;
+                    } else {
+                        // Si c'est un fichier unique
+                        $filename = time() . '_' . $field . '.' . $files->getClientOriginalExtension();
+                        $storedPath = $files->storeAs($path, $filename, 'public');
+                        $filePaths[$field] = $storedPath;
+                    }
+                } elseif ($request->filled($field)) {
+                    // Si c'est déjà un chemin (cas test ou legacy)
+                    $filePaths[$field] = $request->input($field);
+                } else {
+                    $filePaths[$field] = null;
+                }
+            }
+
+            // 1. Création de l'utilisateur (Compte commun)
+            $user = User::create([
+                'prenom' => $request->prenom,
+                'nom' => $request->nom,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'role' => $request->role,
+                'telephone' => $request->telephone,
+                'adresse' => $request->adresse,
+                'code_postal' => $request->code_postal,
+                'ville' => $request->ville,
+            ]);
+
+            // 2. Création du profil spécifique et enregistrement des documents
+            if ($request->role === 'client') {
+                $profile = Structure::create([
+                    'user_id' => $user->id,
+                    'nom_etablissement' => $request->nom_etablissement,
+                    'telephone_etablissement' => $request->telephone_etablissement,
+                    'type_etablissement' => $request->type_etablissement,
+                    'capacite' => $request->capacite,
+                    'fonction' => $request->fonction,
+                    'statut_validation' => 'en_attente',
+                    'adresse' => $request->adresse,
+                    'code_postal' => $request->code_postal,
+                    'ville' => $request->ville,
+                ]);
+            } elseif ($request->role === 'professionnel') {
+                $profile = Professionnel::create([
+                    'user_id' => $user->id,
+                    'date_naissance' => $request->date_naissance,
+                    'diplome' => $request->diplome,
+                    'fonction' => $request->fonction,
+                    'annees_experience' => $request->annees_experience,
+                    'specialites' => $request->specialites,
+                    'statut_validation' => 'en_attente',
+                ]);
+            }
+
+            // 3. Enregistrement des documents dans la table polymorphe
+            if (isset($profile)) {
+                foreach ($filePaths as $field => $path) {
+                    if ($path) {
+                        if (is_array($path)) {
+                            // Cas de multiples fichiers (ex: diplômes)
+                            foreach ($path as $p) {
+                                $profile->documents()->create([
+                                    'nom' => $field,
+                                    'type' => 'document',
+                                    'cheminFichier' => $p,
+                                    'statut' => 'actif'
+                                ]);
+                            }
+                        } else {
+                            // Cas d'un fichier unique
+                            $profile->documents()->create([
+                                'nom' => $field,
+                                'type' => 'document',
+                                'cheminFichier' => $path,
+                                'statut' => 'actif'
+                            ]);
+                        }
+                    }
+                }
+            }
+
+            DB::commit();
+
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            // Recharger l'utilisateur avec ses relations pour la réponse
+            $user->load(['structure.documents', 'professionnel.documents']);
+
+            return response()->json([
+                'success' => true,
+                'access_token' => $token,
+                'token_type' => 'Bearer',
+                'user' => new UserResource($user),
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Illuminate\Support\Facades\Log::error('Erreur inscription : ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error($e->getTraceAsString());
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'inscription : ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Connexion d'un utilisateur
+     */
+    public function login(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Identifiants incorrects'
+            ], 401);
+        }
+
+        // Bloquer la connexion si le compte n'est pas encore validé par l'admin
+        // (sauf pour les admins, qui n'ont pas besoin de validation)
+        if ($user->role !== 'admin') {
+            $profile = $user->role === 'professionnel' ? $user->professionnel : $user->structure;
+            if ($profile && $profile->statut_validation === 'en_attente') {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'pending_validation',
+                    'message' => 'Votre compte est en attente de validation par un administrateur.',
+                ], 403);
+            }
+            if ($profile && $profile->statut_validation === 'refuse') {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'account_refused',
+                    'message' => 'Votre inscription a été refusée. Veuillez contacter l\'administrateur.',
+                ], 403);
+            }
+        }
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        // Charger les documents pour la ressource
+        $user->load(['structure.documents', 'professionnel.documents']);
+
+        return response()->json([
+            'success' => true,
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+            'user' => new UserResource($user),
+        ]);
+    }
+
+    /**
+     * Valider ou refuser un utilisateur (Admin uniquement)
+     */
+    public function validateUser(Request $request, User $user)
+    {
+        $validated = $request->validate([
+            'statut_validation' => 'required|in:valide,refuse',
+            'commentaire' => 'nullable|string',
+        ]);
+
+        $profile = $user->role === 'professionnel' ? $user->professionnel : $user->structure;
+
+        if (!$profile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Profil utilisateur introuvable'
+            ], 404);
+        }
+
+        $profile->update(['statut_validation' => $validated['statut_validation']]);
+
+        $statutLabel = $validated['statut_validation'] === 'valide' ? 'validé' : 'refusé';
+
+        return response()->json([
+            'success' => true,
+            'message' => "Compte {$statutLabel} avec succès",
+            'user' => new UserResource($user->fresh(['professionnel.documents', 'structure.documents'])),
+        ]);
+    }
+
+    /**
+     * Supprimer définitivement un utilisateur (Admin uniquement)
+     */
+    public function deleteUser(User $user)
+    {
+        try {
+            // Révoquer tous les tokens Sanctum
+            $user->tokens()->delete();
+
+            // Supprimer le profil lié (professionnel ou structure)
+            if ($user->role === 'professionnel' && $user->professionnel) {
+                $user->professionnel->documents()->delete();
+                $user->professionnel->delete();
+            } elseif ($user->role === 'client' && $user->structure) {
+                $user->structure->documents()->delete();
+                $user->structure->delete();
+            }
+
+            // Supprimer l'utilisateur
+            $user->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Utilisateur supprimé définitivement',
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la suppression : ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Déconnexion
+     */
+    public function logout(Request $request)
+    {
+        $request->user()->currentAccessToken()->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Déconnexion réussie'
+        ]);
+    }
+
+    /**
+     * Récupérer le profil utilisateur connecté
+     */
+    public function profile(Request $request)
+    {
+        $user = $request->user()->load(['structure.documents', 'professionnel.documents']);
+        
+        return response()->json([
+            'success' => true,
+            'user' => new UserResource($user),
+        ]);
+    }
+
+    /**
+     * Récupérer la liste des professionnels
+     */
+    public function professionals()
+    {
+        $professionals = User::where('role', 'professionnel')
+            ->with([
+                'professionnel.documents', 
+                'professionnel.missions' => function($q) {
+                    $q->with('structure')->latest()->limit(1);
+                }
+            ])
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => UserResource::collection($professionals),
+        ]);
+    }
+
+    /**
+     * Récupérer la liste des structures
+     */
+    public function structures()
+    {
+        $structures = User::where('role', 'client')
+            ->with([
+                'structure.documents',
+            ])
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => UserResource::collection($structures),
+        ]);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        $validator = Validator::make($request->all(), [
+            'firstName' => 'nullable|string|max:255',
+            'lastName' => 'nullable|string|max:255',
+            'email' => [
+                'nullable',
+                'string',
+                'email',
+                'max:255',
+                Rule::unique('users')->ignore($user->id),
+            ],
+            'phone' => 'nullable|string|max:20',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $data = $request->only(['firstName', 'lastName', 'email', 'phone']);
+
+        if (isset($data['firstName'])) $user->prenom = $data['firstName'];
+        if (isset($data['lastName'])) $user->nom = $data['lastName'];
+        if (isset($data['email'])) $user->email = $data['email'];
+        if (isset($data['phone'])) $user->telephone = $data['phone'];
+
+        $user->save();
+
+        // Gestion de la photo de profil
+        if ($request->hasFile('photo_profil_path')) {
+            $file = $request->file('photo_profil_path');
+            $filename = time() . '_photo_profil_path.' . $file->getClientOriginalExtension();
+            $path = $file->storeAs('images/profils', $filename, 'public');
+
+            // Déterminer le profil lié (professionnel ou structure)
+            $profile = $user->role === 'professionnel' ? $user->professionnel : $user->structure;
+
+            if ($profile) {
+                // Supprimer l'ancienne photo du profil
+                $profile->documents()->where('nom', 'photo_profil_path')->delete();
+                // Sauvegarder sur le profil (professionnel ou structure)
+                $profile->documents()->create([
+                    'nom' => 'photo_profil_path',
+                    'type' => 'document',
+                    'cheminFichier' => $path,
+                    'statut' => 'actif'
+                ]);
+            }
+
+            // Aussi mettre à jour sur le User pour les admins
+            $user->documents()->where('nom', 'photo_profil_path')->delete();
+            $user->documents()->create([
+                'nom' => 'photo_profil_path',
+                'type' => 'document',
+                'cheminFichier' => $path,
+                'statut' => 'actif'
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profil mis à jour avec succès',
+            'user' => new UserResource($user->fresh(['structure.documents', 'professionnel.documents', 'documents'])),
+        ]);
+    }
+
+    public function changePassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'current_password' => 'required',
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $user = $request->user();
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Le mot de passe actuel est incorrect.'
+            ], 422);
+        }
+
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Mot de passe modifié avec succès.'
+        ]);
+    }
+
+    /**
+     * Envoyer un lien de réinitialisation de mot de passe (simulé via log)
+     */
+    public function forgotPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|exists:users,email',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'L\'adresse email est invalide ou n\'existe pas.'
+            ], 422);
+        }
+
+        $email = $request->email;
+        $token = Str::random(60);
+
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $email],
+            ['token' => Hash::make($token), 'created_at' => now()]
+        );
+
+        // Simulation : on log le token au lieu d'envoyer un vrai mail
+        Log::info("DEMANDE DE RÉINITIALISATION DE MOT DE PASSE");
+        Log::info("Email: {$email}");
+        Log::info("Token: {$token}");
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Email de réinitialisation envoyé (voir storage/logs/laravel.log pour le token).'
+        ]);
+    }
+
+    /**
+     * Réinitialiser le mot de passe avec le token
+     */
+    public function resetPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'token' => 'required',
+            'email' => 'required|email|exists:users,email',
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $reset = DB::table('password_reset_tokens')
+            ->where('email', $request->email)
+            ->first();
+
+        if (!$reset || !Hash::check($request->token, $reset->token)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Le jeton de réinitialisation est invalide ou a expiré.'
+            ], 422);
+        }
+
+        $user = User::where('email', $request->email)->first();
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        // Supprimer le token utilisé
+        DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Votre mot de passe a été réinitialisé avec succès.'
+        ]);
+    }
+}
