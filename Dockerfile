@@ -33,4 +33,4 @@ RUN composer install --no-dev --optimize-autoloader --no-scripts
 EXPOSE 8000
 
 # Start script
-CMD composer run post-autoload-dump && php artisan config:clear && php artisan route:clear && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-8000}
+CMD composer run post-autoload-dump && php artisan config:clear && php artisan route:clear && php artisan storage:link && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-8000}
