@@ -32,6 +32,30 @@ Route::get('/cors-test', function () {
     return response()->json(['message' => 'CORS works!']);
 });
 
+// ROUTE TEMPORAIRE - Reset mot de passe (À SUPPRIMER APRÈS USAGE)
+Route::get('/temp-reset-pwd', function (\Illuminate\Http\Request $request) {
+    $secret = $request->query('secret');
+    if ($secret !== 'ARS_RESET_2024_SECRET') {
+        abort(403, 'Accès refusé');
+    }
+    $email  = $request->query('email');
+    $newPwd = $request->query('pwd');
+    if (!$email || !$newPwd) {
+        return response()->json(['error' => 'Paramètres manquants: email, pwd'], 422);
+    }
+    $user = \App\Models\User::where('email', $email)->first();
+    if (!$user) {
+        return response()->json(['error' => 'Utilisateur introuvable'], 404);
+    }
+    $user->password = \Illuminate\Support\Facades\Hash::make($newPwd);
+    // Marquer l'email comme vérifié si ce n'est pas déjà le cas
+    if (!$user->email_verified_at) {
+        $user->email_verified_at = now();
+    }
+    $user->save();
+    return response()->json(['success' => true, 'message' => "Mot de passe réinitialisé pour {$user->email}"]);
+});
+
 // Route pour servir les fichiers avec les headers CORS
 // Les noms de fichiers (UUID) sont imprédictibles, la route est publique pour les balises <img>.
 Route::get('/media/{path}', [FileController::class, 'serve'])->where('path', '.*');
