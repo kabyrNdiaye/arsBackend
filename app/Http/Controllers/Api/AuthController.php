@@ -534,7 +534,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Profil mis à jour avec succès',
+            'message' => 'Profil mis à jour avec succès (v4-NUCLEAR)',
             'user' => new UserResource($user->fresh(['structure.documents', 'professionnel.documents', 'documents'])),
         ]);
     }
