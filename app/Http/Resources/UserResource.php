@@ -145,6 +145,7 @@ class UserResource extends JsonResource
             'prenom' => $this->prenom,
             'nom' => $this->nom,
             'name' => "{$this->prenom} {$this->nom}",
+            'debug_https_fix' => 'active_v3_nuclear',
         ]);
 
         // Forcer le HTTPS pour toutes les URLs Render
