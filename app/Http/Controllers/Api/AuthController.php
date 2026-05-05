@@ -191,7 +191,7 @@ class AuthController extends Controller
             $token = $user->createToken('auth_token')->plainTextToken;
 
             // Recharger l'utilisateur avec ses relations pour la réponse
-            $user->load(['structure.documents', 'professionnel.documents']);
+            $user->load(['structure.documents', 'professionnel.documents', 'documents']);
 
             return response()->json([
                 'success' => true,
@@ -286,7 +286,7 @@ class AuthController extends Controller
         $token = $user->createToken('auth_token')->plainTextToken;
 
         // Charger les documents pour la ressource
-        $user->load(['structure.documents', 'professionnel.documents']);
+        $user->load(['structure.documents', 'professionnel.documents', 'documents']);
 
         return response()->json([
             'success' => true,
@@ -377,7 +377,7 @@ class AuthController extends Controller
      */
     public function profile(Request $request)
     {
-        $user = $request->user()->load(['structure.documents', 'professionnel.documents']);
+        $user = $request->user()->load(['structure.documents', 'professionnel.documents', 'documents']);
         
         return response()->json([
             'success' => true,
@@ -393,6 +393,7 @@ class AuthController extends Controller
         $professionals = User::where('role', 'professionnel')
             ->with([
                 'professionnel.documents', 
+                'documents',
                 'professionnel.missions' => function($q) {
                     $q->with('structure')->latest()->limit(1);
                 }
@@ -413,6 +414,7 @@ class AuthController extends Controller
         $structures = User::where('role', 'client')
             ->with([
                 'structure.documents',
+                'documents',
             ])
             ->get();
 

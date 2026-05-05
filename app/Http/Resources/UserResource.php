@@ -19,9 +19,9 @@ class UserResource extends JsonResource
         $profileData = [];
 
         if ($this->role === 'client' && $this->structure) {
-            $profileData = $this->structure->toArray();
+            $profileData = (array)$this->structure->toArray();
         } elseif ($this->role === 'professionnel' && $this->professionnel) {
-            $profileData = $this->professionnel->toArray();
+            $profileData = (array)$this->professionnel->toArray();
         }
 
         // Retirer les ID et timestamps du profil pour éviter les conflits
@@ -30,11 +30,18 @@ class UserResource extends JsonResource
         // Extraire les documents de la table polymorphe et les rajouter au profil
         $profile = ($this->role === 'client') ? $this->structure : $this->professionnel;
         
-        $baseUrl = url('/');
+        $baseUrl = rtrim(url('/'), '/');
+        if (str_contains($baseUrl, 'onrender.com')) {
+            $baseUrl = str_replace('http://', 'https://', $baseUrl);
+        }
 
         // 1. Charger les documents du USER lui-même (ex: pour les admins)
-        foreach ($this->documents as $doc) {
-            $profileData[$doc->nom] = $baseUrl . '/api/media/' . ltrim($doc->cheminFichier, '/');
+        if ($this->relationLoaded('documents')) {
+            foreach ($this->documents as $doc) {
+                if ($doc->cheminFichier && $doc->nom) {
+                    $profileData[$doc->nom] = $baseUrl . '/api/media/' . ltrim($doc->cheminFichier, '/');
+                }
+            }
         }
 
         // 2. Charger les documents du profil s'il existe
@@ -47,24 +54,33 @@ class UserResource extends JsonResource
             }
 
             // Normaliser la photo de profil si elle existe
-            if (isset($profileData['photo_profil_path']) && !empty($profileData['photo_profil_path'])) {
+            if (empty($profileData['photo_profil_path']) && $this->relationLoaded('documents')) {
+                $userDoc = $this->documents->where('nom', 'photo_profil_path')->first();
+                if ($userDoc) {
+                    $profileData['photo_profil_path'] = $baseUrl . '/api/media/' . ltrim($userDoc->cheminFichier, '/');
+                }
+            }
+
+            if (!empty($profileData['photo_profil_path'])) {
                 $path = $profileData['photo_profil_path'];
                 // Éviter de doubler le préfixe si déjà présent
-                if (!str_contains($path, 'api/media')) {
+                if (is_string($path) && !str_contains($path, 'api/media')) {
                     $profileData['photo_profil_path'] = $baseUrl . '/api/media/' . ltrim($path, '/');
                 }
             }
 
             // Charger les documents du profil
-            foreach ($profile->documents as $doc) {
-                // On utilise des URLs absolues pour éviter toute ambiguïté côté Flutter
-                $profileData[$doc->nom] = $baseUrl . '/api/media/' . ltrim($doc->cheminFichier, '/');
+            if ($profile->relationLoaded('documents') || $profile->documents()->exists()) {
+                foreach ($profile->documents as $doc) {
+                    if ($doc->cheminFichier && $doc->nom) {
+                        $profileData[$doc->nom] = $baseUrl . '/api/media/' . ltrim($doc->cheminFichier, '/');
+                    }
+                }
             }
 
             // Exposer TOUS les documents du profil dans un tableau structuré
-            // pour que Flutter puisse afficher les documents supplémentaires ajoutés par l'utilisateur
             $profileData['documents'] = $profile->documents->filter(function ($doc) {
-                return $doc->nom !== 'photo_profil_path'; // photo de profil exclue
+                return $doc->nom !== 'photo_profil_path' && !empty($doc->cheminFichier);
             })->map(function ($doc) use ($baseUrl) {
                 return [
                     'id'       => $doc->id,
@@ -75,35 +91,29 @@ class UserResource extends JsonResource
                 ];
             })->values()->toArray();
 
-            // Ajouter la fonction principale (nouveau champ 'fonction' pour les pros)
-            $fonctionPrincipale = '';
+            // Ajouter la fonction principale
+            $fonctionPrincipale = $profile->fonction ?? '';
             if ($this->role === 'professionnel') {
-                $fonctionPrincipale = $profile->fonction ?? '';
-                
-                // Ajouter la mission actuelle si chargée
-                if ($profile->relationLoaded('missions')) {
-                    $lastMission = $profile->missions->whereNotIn('statut', ['Terminée', 'Validée', 'Annulée'])->first();
-                    if ($lastMission) {
-                        $structure = $lastMission->structure;
-                        $address = 'Adresse non renseignée';
-                        if ($structure) {
-                            $structUser = $structure->user;
-                            $addr = $structure->adresse ?? ($structUser ? $structUser->adresse : '');
-                            $cp = $structure->code_postal ?? ($structUser ? $structUser->code_postal : '');
-                            $city = $structure->ville ?? ($structUser ? $structUser->ville : '');
-                            $address = trim("$addr $cp $city");
-                        }
-
-                        $profileData['current_mission'] = [
-                            'mission_id' => $lastMission->id,
-                            'statut' => $lastMission->statut,
-                            'structure_name' => $structure ? $structure->nom_etablissement : 'ARS',
-                            'structure_address' => $address ?: 'Adresse non renseignée',
-                        ];
+                // Ajouter la mission actuelle
+                $lastMission = $profile->missions()->whereNotIn('statut', ['terminé', 'Terminé', 'terminée', 'Terminée', 'Validée', 'Annulée'])->first();
+                if ($lastMission) {
+                    $structure = $lastMission->structure;
+                    $address = '';
+                    if ($structure) {
+                        $structUser = $structure->user;
+                        $addr = $structure->adresse ?? ($structUser ? $structUser->adresse : '');
+                        $cp = $structure->code_postal ?? ($structUser ? $structUser->code_postal : '');
+                        $city = $structure->ville ?? ($structUser ? $structUser->ville : '');
+                        $address = trim("$addr $cp $city");
                     }
+
+                    $profileData['current_mission'] = [
+                        'mission_id' => $lastMission->id,
+                        'statut' => $lastMission->statut,
+                        'structure_name' => $structure ? $structure->nom_etablissement : 'ARS',
+                        'structure_address' => $address ?: 'Adresse non renseignée',
+                    ];
                 }
-            } elseif ($this->role === 'client') {
-                $fonctionPrincipale = $profile->fonction ?? '';
             }
 
             $profileData['fonction_principale'] = $fonctionPrincipale;
@@ -118,14 +128,12 @@ class UserResource extends JsonResource
             } elseif ($this->role === 'client') {
                 $profileData['stats'] = [
                     'total_missions' => $profile->missions()->count(),
-                    'active_missions' => $profile->missions()->whereIn('statut', ['Demande envoyée', 'Confirmée', 'En cours'])->count(),
+                    'active_missions' => $profile->missions()->whereIn('statut', ['Demande envoyée', 'Confirmée', 'En cours', 'En attente'])->count(),
                 ];
             }
         }
 
-        // Ensure address fields are correctly merged and prioritized
-        // If it's a client, the profileData (Structure) might have address fields that should be preferred or merged
-        // Fix: Si l'adresse dans le profil est null, on la supprime pour ne pas écraser l'adresse de l'utilisateur
+        // Correction des champs d'adresse
         $overlappingFields = ['adresse', 'code_postal', 'ville', 'telephone'];
         foreach ($overlappingFields as $field) {
             if (array_key_exists($field, $profileData) && is_null($profileData[$field])) {
@@ -133,10 +141,19 @@ class UserResource extends JsonResource
             }
         }
 
-        return array_merge($userData, $profileData, [
+        $result = array_merge((array)$userData, (array)$profileData, [
             'prenom' => $this->prenom,
             'nom' => $this->nom,
             'name' => "{$this->prenom} {$this->nom}",
         ]);
+
+        // Forcer le HTTPS pour toutes les URLs Render
+        array_walk_recursive($result, function (&$item) {
+            if (is_string($item) && str_contains($item, 'onrender.com')) {
+                $item = str_replace('http://', 'https://', $item);
+            }
+        });
+
+        return $result;
     }
 }
