@@ -273,13 +273,13 @@ class AuthController extends Controller
                     'message' => 'Votre inscription a été refusée. Veuillez contacter l\'administrateur.',
                 ], 403);
             }
-        }
 
-        $isValidated = $profile && $profile->statut_validation === 'valide';
-        if (!$user->hasVerifiedEmail() && !$isValidated) {
-            // Auto-marquer comme vérifié si l'admin a déjà validé le compte
-            $user->email_verified_at = now();
-            $user->save();
+            // Auto-vérifier l'email si l'admin a validé le compte
+            $isValidated = $profile && $profile->statut_validation === 'valide';
+            if (!$user->hasVerifiedEmail() && $isValidated) {
+                $user->email_verified_at = now();
+                $user->save();
+            }
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;
