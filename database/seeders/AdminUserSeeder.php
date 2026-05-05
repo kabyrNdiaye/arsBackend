@@ -14,19 +14,24 @@ class AdminUserSeeder extends Seeder
     public function run(): void
     {
         // Vérifier si l'admin existe déjà
-        if (!User::where('email', 'admin@ars.com')->exists()) {
-            User::create([
+        $admin = User::firstOrCreate(
+            ['email' => 'smknd2002@gmail.com'],
+            [
                 'prenom' => 'Super',
                 'nom' => 'Admin',
-                'email' => 'admin@ars.com',
-                'password' => Hash::make('Ars@1234'),
+                'password' => Hash::make('Passer1234'),
                 'role' => 'admin',
                 'telephone' => '0000000000',
                 'email_verified_at' => now(),
-            ]);
-            $this->command->info('Compte Admin créé : admin@ars.com');
-        } else {
-            $this->command->info('Le compte Admin existe déjà.');
-        }
+            ]
+        );
+
+        // Au cas où le compte existe déjà (créé par erreur via l'appli en client standard), on force le rôle Admin
+        $admin->update([
+            'role' => 'admin',
+            'password' => Hash::make('Passer1234'),
+        ]);
+
+        $this->command->info('Compte Admin mis à jour : smknd2002@gmail.com');
     }
 }
