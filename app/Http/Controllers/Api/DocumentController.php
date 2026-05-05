@@ -101,7 +101,7 @@ class DocumentController extends Controller
         $folder = $user->role === 'professionnel' ? 'documents/professionnels' : 'documents/clients';
         $ext = $file->getClientOriginalExtension();
         $filename = Str::uuid() . '.' . $ext;
-        $path = $file->storeAs($folder, $filename);
+        $path = $file->storeAs($folder, $filename, 'public');
 
         $document = $profile->documents()->create([
             'nom' => $validated['nom'],
@@ -167,7 +167,7 @@ class DocumentController extends Controller
             $ext      = $file->getClientOriginalExtension();
             $filename = Str::uuid() . '.' . $ext;
             $folder   = $user->role === 'professionnel' ? 'documents/professionnels' : 'documents/clients';
-            $path     = $file->storeAs($folder, $filename);
+            $path     = $file->storeAs($folder, $filename, 'public');
 
             $document->cheminFichier = $path;
         }

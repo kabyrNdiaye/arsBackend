@@ -99,7 +99,7 @@ class AuthController extends Controller
                         foreach ($files as $index => $file) {
                             $ext = $file->getClientOriginalExtension();
                             $filename = Str::uuid() . '.' . $ext;
-                            $storedPath = $file->storeAs($path, $filename); // disk 'local' par défaut
+                            $storedPath = $file->storeAs($path, $filename, 'public');
                             $paths[] = $storedPath;
                         }
                         $filePaths[$field] = $paths;
@@ -107,7 +107,7 @@ class AuthController extends Controller
                         // Si c'est un fichier unique
                         $ext = $files->getClientOriginalExtension();
                         $filename = Str::uuid() . '.' . $ext;
-                        $storedPath = $files->storeAs($path, $filename); // disk 'local' par défaut
+                        $storedPath = $files->storeAs($path, $filename, 'public');
                         $filePaths[$field] = $storedPath;
                     }
                 } elseif ($request->filled($field)) {
@@ -470,7 +470,7 @@ class AuthController extends Controller
             $file = $request->file('photo_profil_path');
             $ext = $file->getClientOriginalExtension();
             $filename = Str::uuid() . '.' . $ext;
-            $path = $file->storeAs('images/profils', $filename); // disk 'local' par défaut
+            $path = $file->storeAs('images/profils', $filename, 'public');
 
             // Déterminer le profil lié (professionnel ou structure)
             $profile = $user->role === 'professionnel' ? $user->professionnel : $user->structure;
@@ -505,7 +505,7 @@ class AuthController extends Controller
                 $file = $request->file($field);
                 $ext = $file->getClientOriginalExtension();
                 $filename = Str::uuid() . '.' . $ext;
-                $path = $file->storeAs('documents/professionnels', $filename); // disk 'local' par défaut
+                $path = $file->storeAs('documents/professionnels', $filename, 'public');
 
                 // Uniquement pour les professionnels
                 $profile = $user->role === 'professionnel' ? $user->professionnel : null;
