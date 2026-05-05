@@ -275,12 +275,11 @@ class AuthController extends Controller
             }
         }
 
-        if (!$user->hasVerifiedEmail()) {
-            return response()->json([
-                'success' => false,
-                'code' => 'email_not_verified',
-                'message' => 'Veuillez vérifier votre adresse email avant de vous connecter.',
-            ], 403);
+        $isValidated = $profile && $profile->statut_validation === 'valide';
+        if (!$user->hasVerifiedEmail() && !$isValidated) {
+            // Auto-marquer comme vérifié si l'admin a déjà validé le compte
+            $user->email_verified_at = now();
+            $user->save();
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;
