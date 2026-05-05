@@ -14,13 +14,16 @@ class DocumentResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $baseUrl = url('/');
+
         return [
-            'id' => $this->id,
-            'nom' => $this->nom,
-            'type' => $this->type,
-            'url' => $this->cheminFichier,
-            'statut' => $this->statut,
-            'lie_a' => $this->documentable,
+            'id'        => $this->id,
+            'nom'       => $this->nom,
+            'type'      => $this->type,
+            'url'       => $baseUrl . '/api/media/' . ltrim($this->cheminFichier, '/'),
+            'chemin'    => $this->cheminFichier,
+            'statut'    => $this->statut,
+            'created_at'=> $this->created_at?->toDateTimeString(),
         ];
     }
 }

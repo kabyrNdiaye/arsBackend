@@ -14,6 +14,11 @@ class MissionResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $lastMessage = $this->messages()
+            ->whereNotIn('type', ['feedback', 'incident'])
+            ->latest()
+            ->first();
+
         return [
             'id' => $this->id,
             'statut' => $this->statut,
@@ -54,8 +59,12 @@ class MissionResource extends JsonResource
             'code_cuisine' => $this->code_cuisine,
             'checklist_journee' => $this->checklist_journee,
             'checklist_items' => $this->checklist_items,
-            'last_message' => new MissionMessageResource($this->messages()->latest()->first()),
-            'unread_messages_count' => $this->messages()->where('is_read', false)->where('user_id', '!=', $request->user()->id)->count(),
+            'last_message' => $lastMessage ? new MissionMessageResource($lastMessage) : null,
+            'unread_messages_count' => $this->messages()
+                ->whereNotIn('type', ['incident', 'feedback'])
+                ->where('is_read', false)
+                ->where('user_id', '!=', $request->user()->id)
+                ->count(),
             'est_cree_par_admin' => (bool)$this->est_cree_par_admin,
             'recettes' => $this->recettes, // Simple array of recipes
             'repas' => $this->repas->map(function($r) {
@@ -89,9 +98,22 @@ class MissionResource extends JsonResource
             }),
             
             // Relations
-            'structure' => new \App\Http\Resources\UserResource($this->whenLoaded('structure', function() {
-                return $this->structure->user;
-            })),
+            'structure' => $this->whenLoaded('structure', function() {
+                $structure = $this->structure;
+                $user = $structure?->user;
+                return [
+                    'id'                   => $structure?->id,
+                    'nom_etablissement'    => $structure?->nom_etablissement ?? $user?->nom_etablissement,
+                    'type_etablissement'   => $structure?->type_etablissement ?? $user?->type_etablissement,
+                    'adresse'              => $structure?->adresse ?? $user?->adresse,
+                    'code_postal'          => $structure?->code_postal ?? $user?->code_postal,
+                    'ville'                => $structure?->ville ?? $user?->ville,
+                    'telephone'            => $structure?->telephone ?? $user?->telephone,
+                    'telephone_etablissement' => $structure?->telephone_etablissement ?? $user?->telephone_etablissement,
+                    'email'                => $user?->email,
+                    'name'                 => $user?->name ?? ($user ? $user->prenom . ' ' . $user->nom : null),
+                ];
+            }),
             'professionnel' => new \App\Http\Resources\UserResource($this->whenLoaded('professionnel', function() {
                 return $this->professionnel->user;
             })),

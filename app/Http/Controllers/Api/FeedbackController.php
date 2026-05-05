@@ -128,7 +128,7 @@ class FeedbackController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $feedback->load('user:id,name,email')
+                'data' => $feedback->load('user:id,prenom,nom,email')
             ]);
         } catch (\Exception $e) {
             return response()->json([

@@ -16,7 +16,7 @@ class UserSeeder extends Seeder
         $user = \App\Models\User::updateOrCreate(
             ['email' => 'kabyr@itea.fr'],
             [
-                'nom' => 'ITEA',
+                'nom' => 'ARS',
                 'prenom' => 'Kabyr',
                 'telephone' => '771234567',
                 'password' => bcrypt('password'),

@@ -15,17 +15,26 @@ class MenuController extends Controller
 
         if ($request->has('search')) {
             $search = $request->query('search');
-            $query->where('nom', 'ILIKE', "%{$search}%")
+            $query->where(function($q) use ($search) {
+                $q->where('nom', 'ILIKE', "%{$search}%")
                   ->orWhere('description', 'ILIKE', "%{$search}%");
+            });
         }
 
         if ($request->has('type')) {
             $query->where('type', $request->query('type'));
         }
 
+        $perPage = 5;
+        $menus = $query->latest()->paginate($perPage);
+
         return response()->json([
-            'success' => true,
-            'data' => $query->latest()->get()
+            'success'      => true,
+            'data'         => $menus->items(),
+            'total'        => $menus->total(),
+            'per_page'     => $menus->perPage(),
+            'current_page' => $menus->currentPage(),
+            'last_page'    => $menus->lastPage(),
         ]);
     }
 

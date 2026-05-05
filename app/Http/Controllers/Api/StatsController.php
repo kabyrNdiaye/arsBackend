@@ -101,10 +101,8 @@ class StatsController extends Controller
         // Total missions for this structure
         $totalMissions = Mission::where('structure_id', $structureId)->count();
 
-        // Average residents per mission fallback to structure capacity
-        $avgResidents = Mission::where('structure_id', $structureId)
-            ->whereNotNull('nb_residents_jour')
-            ->avg('nb_residents_jour') ?? $structure->capacite ?? 0;
+        // Utilisation de la capacité directe de la structure
+        $avgResidents = $structure->capacite ?? 0;
         
         // Count unique professionals who worked for this structure
         $totalChefs = Mission::where('structure_id', $structureId)

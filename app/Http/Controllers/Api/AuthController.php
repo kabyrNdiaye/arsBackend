@@ -14,7 +14,9 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
@@ -28,7 +30,7 @@ class AuthController extends Controller
             'prenom' => 'required|string|max:255',
             'nom' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6|confirmed',
+            'password' => ['required', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()],
             'role' => ['required', Rule::in(['client', 'professionnel'])],
             
             // Champs optionnels communs
@@ -44,19 +46,20 @@ class AuthController extends Controller
             'capacite' => 'nullable|integer',
             'fonction' => 'nullable|string|max:100',
             // Validation des fichiers (accepte fichier ou string pour compatibilité)
-            'contrat_prestation_path' => 'nullable', 
-            'plan_locaux_path' => 'nullable',
-            'reglement_interieur_path' => 'nullable',
+            'contrat_prestation_path' => 'nullable|file|mimes:pdf,jpg,png|max:5120', 
+            'plan_locaux_path' => 'nullable|file|mimes:pdf,jpg,png|max:5120',
+            'reglement_interieur_path' => 'nullable|file|mimes:pdf,jpg,png|max:5120',
             
             // Champs PROFESSIONNEL
             'date_naissance' => 'nullable|date',
             'diplome' => 'nullable|string|max:255',
             'annees_experience' => 'nullable|integer',
             'specialites' => 'nullable|array',
-            'photo_profil_path' => 'nullable',
-            'diplome_path' => 'nullable',
-            'certificat_medical_path' => 'nullable',
-            'permis_conduire_path' => 'nullable',
+            'photo_profil_path' => 'nullable|file|mimes:jpg,jpeg,png|max:2048',
+            'diplome_path' => 'nullable|array',
+            'diplome_path.*' => 'file|mimes:pdf,jpg,png|max:5120',
+            'certificat_medical_path' => 'nullable|file|mimes:pdf,jpg,png|max:5120',
+            'permis_conduire_path' => 'nullable|file|mimes:pdf,jpg,png|max:5120',
         ]);
 
         if ($validator->fails()) {
@@ -94,15 +97,17 @@ class AuthController extends Controller
                         // Si c'est un tableau de fichiers (ex: diplome_path[$i])
                         $paths = [];
                         foreach ($files as $index => $file) {
-                            $filename = time() . '_' . $field . '_' . $index . '.' . $file->getClientOriginalExtension();
-                            $storedPath = $file->storeAs($path, $filename, 'public');
+                            $ext = $file->getClientOriginalExtension();
+                            $filename = Str::uuid() . '.' . $ext;
+                            $storedPath = $file->storeAs($path, $filename); // disk 'local' par défaut
                             $paths[] = $storedPath;
                         }
                         $filePaths[$field] = $paths;
                     } else {
                         // Si c'est un fichier unique
-                        $filename = time() . '_' . $field . '.' . $files->getClientOriginalExtension();
-                        $storedPath = $files->storeAs($path, $filename, 'public');
+                        $ext = $files->getClientOriginalExtension();
+                        $filename = Str::uuid() . '.' . $ext;
+                        $storedPath = $files->storeAs($path, $filename); // disk 'local' par défaut
                         $filePaths[$field] = $storedPath;
                     }
                 } elseif ($request->filled($field)) {
@@ -125,6 +130,8 @@ class AuthController extends Controller
                 'code_postal' => $request->code_postal,
                 'ville' => $request->ville,
             ]);
+
+            $user->sendEmailVerificationNotification();
 
             // 2. Création du profil spécifique et enregistrement des documents
             if ($request->role === 'client') {
@@ -195,11 +202,14 @@ class AuthController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            \Illuminate\Support\Facades\Log::error('Erreur inscription : ' . $e->getMessage());
-            \Illuminate\Support\Facades\Log::error($e->getTraceAsString());
+            Log::error('Erreur inscription', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user' => $request->email ?? 'inconnu',
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de l\'inscription : ' . $e->getMessage()
+                'message' => 'Une erreur est survenue. Veuillez réessayer.'
             ], 500);
         }
     }
@@ -221,14 +231,29 @@ class AuthController extends Controller
             ], 422);
         }
 
+        $throttleKey = Str::lower($request->input('email')) . '|' . $request->ip();
+
+        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $seconds = \Illuminate\Support\Facades\RateLimiter::availableIn($throttleKey);
+            return response()->json([
+                'success' => false,
+                'code' => 'too_many_attempts',
+                'message' => "Trop de tentatives de connexion. Veuillez réessayer dans {$seconds} secondes.",
+                'seconds' => $seconds
+            ], 429);
+        }
+
         $user = User::where('email', $request->email)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
+            \Illuminate\Support\Facades\RateLimiter::hit($throttleKey, 60); // Bloque pendant 60s après 5 hits
             return response()->json([
                 'success' => false,
                 'message' => 'Identifiants incorrects'
             ], 401);
         }
+
+        \Illuminate\Support\Facades\RateLimiter::clear($throttleKey);
 
         // Bloquer la connexion si le compte n'est pas encore validé par l'admin
         // (sauf pour les admins, qui n'ont pas besoin de validation)
@@ -248,6 +273,14 @@ class AuthController extends Controller
                     'message' => 'Votre inscription a été refusée. Veuillez contacter l\'administrateur.',
                 ], 403);
             }
+        }
+
+        if (!$user->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => false,
+                'code' => 'email_not_verified',
+                'message' => 'Veuillez vérifier votre adresse email avant de vous connecter.',
+            ], 403);
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -404,6 +437,10 @@ class AuthController extends Controller
                 Rule::unique('users')->ignore($user->id),
             ],
             'phone' => 'nullable|string|max:20',
+            'photo_profil_path' => 'nullable|file|mimes:jpg,jpeg,png|max:10240',
+            'diplome_path' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'certificat_medical_path' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'permis_conduire_path' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
         if ($validator->fails()) {
@@ -422,11 +459,18 @@ class AuthController extends Controller
 
         $user->save();
 
+        // Debug log pour voir ce qui arrive au backend
+        \Illuminate\Support\Facades\Log::info('Update Profile Request:', [
+            'has_file' => $request->hasFile('photo_profil_path'),
+            'file_valid' => $request->hasFile('photo_profil_path') && $request->file('photo_profil_path')->isValid(),
+        ]);
+
         // Gestion de la photo de profil
-        if ($request->hasFile('photo_profil_path')) {
+        if ($request->hasFile('photo_profil_path') && $request->file('photo_profil_path')->isValid()) {
             $file = $request->file('photo_profil_path');
-            $filename = time() . '_photo_profil_path.' . $file->getClientOriginalExtension();
-            $path = $file->storeAs('images/profils', $filename, 'public');
+            $ext = $file->getClientOriginalExtension();
+            $filename = Str::uuid() . '.' . $ext;
+            $path = $file->storeAs('images/profils', $filename); // disk 'local' par défaut
 
             // Déterminer le profil lié (professionnel ou structure)
             $profile = $user->role === 'professionnel' ? $user->professionnel : $user->structure;
@@ -453,6 +497,39 @@ class AuthController extends Controller
             ]);
         }
 
+        // Gestion des documents professionnels (diplome, certificat médical, permis)
+        $documentFields = ['diplome_path', 'certificat_medical_path', 'permis_conduire_path'];
+
+        foreach ($documentFields as $field) {
+            if ($request->hasFile($field) && $request->file($field)->isValid()) {
+                $file = $request->file($field);
+                $ext = $file->getClientOriginalExtension();
+                $filename = Str::uuid() . '.' . $ext;
+                $path = $file->storeAs('documents/professionnels', $filename); // disk 'local' par défaut
+
+                // Uniquement pour les professionnels
+                $profile = $user->role === 'professionnel' ? $user->professionnel : null;
+
+                if ($profile) {
+                    // Supprimer l'ancien fichier physique si existant
+                    $oldDoc = $profile->documents()->where('nom', $field)->first();
+                    if ($oldDoc) {
+                        Storage::disk('public')->delete($oldDoc->cheminFichier);
+                        $oldDoc->delete();
+                    }
+                    // Sauvegarder le nouveau document
+                    $profile->documents()->create([
+                        'nom' => $field,
+                        'type' => 'document',
+                        'cheminFichier' => $path,
+                        'statut' => 'actif'
+                    ]);
+                }
+
+                Log::info("Document $field mis à jour", ['path' => $path, 'user_id' => $user->id]);
+            }
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Profil mis à jour avec succès',
@@ -464,7 +541,7 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'current_password' => 'required',
-            'password' => 'required|string|min:6|confirmed',
+            'password' => ['required', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()],
         ]);
 
         if ($validator->fails()) {
@@ -516,14 +593,19 @@ class AuthController extends Controller
             ['token' => Hash::make($token), 'created_at' => now()]
         );
 
-        // Simulation : on log le token au lieu d'envoyer un vrai mail
-        Log::info("DEMANDE DE RÉINITIALISATION DE MOT DE PASSE");
-        Log::info("Email: {$email}");
-        Log::info("Token: {$token}");
+        // Envoi de l'e-mail réel
+        try {
+            \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\ResetPasswordMail($token));
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Erreur lors de l'envoi de l'e-mail de réinitialisation: " . $e->getMessage());
+        }
+
+        // Sécurité : Supprimer le log qui affichait le token en clair
+        Log::info("Demande de réinitialisation de mot de passe pour : {$email}");
 
         return response()->json([
             'success' => true,
-            'message' => 'Email de réinitialisation envoyé (voir storage/logs/laravel.log pour le token).'
+            'message' => 'L\'e-mail de réinitialisation a été envoyé à votre adresse.'
         ]);
     }
 
@@ -535,7 +617,7 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'token' => 'required',
             'email' => 'required|email|exists:users,email',
-            'password' => 'required|string|min:6|confirmed',
+            'password' => ['required', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()],
         ]);
 
         if ($validator->fails()) {
@@ -553,6 +635,16 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Le jeton de réinitialisation est invalide ou a expiré.'
+            ], 422);
+        }
+
+        // Vérification d'expiration (60 minutes)
+        if (now()->diffInMinutes($reset->created_at) > 60) {
+            DB::table('password_reset_tokens')
+                ->where('email', $request->email)->delete();
+            return response()->json([
+                'success' => false,
+                'message' => 'Ce lien a expiré. Veuillez faire une nouvelle demande.'
             ], 422);
         }
 

@@ -24,6 +24,7 @@ class MissionMessageResource extends JsonResource
             'longitude' => $this->longitude,
             'is_read' => $this->is_read,
             'is_handled' => (bool)$this->is_handled,
+            'reference_id' => $this->reference_id, // ID incident ou retour lié
             'created_at' => $this->created_at,
             'user' => [
                 'id' => $this->user->id,

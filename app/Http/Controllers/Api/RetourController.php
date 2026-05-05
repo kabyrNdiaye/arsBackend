@@ -22,18 +22,18 @@ class RetourController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'mission_id' => 'required|exists:missions,id',
-            'note' => 'required|integer|min:1|max:5',
-            'commentaire' => 'required|string',
-            'heureDebutEffectif' => 'required',
-            'heureFinEffectif' => 'required',
+            'mission_id'          => 'required|exists:missions,id',
+            'note'                => 'required|integer|min:1|max:5',
+            'commentaire'         => 'required|string',
+            'heureDebutEffectif'  => 'nullable',
+            'heureFinEffectif'    => 'nullable',
         ]);
 
         $retour = Retour::create($validated);
 
         return response()->json([
             'message' => 'Retour créé avec succès',
-            'data' => $retour
+            'data'    => $retour
         ], 201);
     }
 

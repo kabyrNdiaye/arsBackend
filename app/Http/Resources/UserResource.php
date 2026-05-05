@@ -61,6 +61,20 @@ class UserResource extends JsonResource
                 $profileData[$doc->nom] = $baseUrl . '/api/media/' . ltrim($doc->cheminFichier, '/');
             }
 
+            // Exposer TOUS les documents du profil dans un tableau structuré
+            // pour que Flutter puisse afficher les documents supplémentaires ajoutés par l'utilisateur
+            $profileData['documents'] = $profile->documents->filter(function ($doc) {
+                return $doc->nom !== 'photo_profil_path'; // photo de profil exclue
+            })->map(function ($doc) use ($baseUrl) {
+                return [
+                    'id'       => $doc->id,
+                    'nom'      => $doc->nom,
+                    'type'     => $doc->type,
+                    'url'      => $baseUrl . '/api/media/' . ltrim($doc->cheminFichier, '/'),
+                    'statut'   => $doc->statut,
+                ];
+            })->values()->toArray();
+
             // Ajouter la fonction principale (nouveau champ 'fonction' pour les pros)
             $fonctionPrincipale = '';
             if ($this->role === 'professionnel') {
@@ -98,8 +112,8 @@ class UserResource extends JsonResource
             if ($this->role === 'professionnel') {
                 $profileData['stats'] = [
                     'total_missions' => $profile->missions()->count(),
-                    'completed_missions' => $profile->missions()->whereIn('statut', ['Terminée', 'Validée', 'Payée'])->count(),
-                    'pending_missions' => $profile->missions()->whereIn('statut', ['Demande envoyée', 'En attente', 'Assignée'])->count(),
+                    'completed_missions' => $profile->missions()->whereIn('statut', ['terminé', 'Terminé', 'terminée', 'Terminée', 'Validée', 'Payée'])->count(),
+                    'pending_missions' => $profile->missions()->whereIn('statut', ['en cours', 'En cours', 'confirmé', 'Confirmé', 'confirmée', 'Confirmée', 'Demande envoyée', 'En attente', 'Assignée'])->count(),
                 ];
             } elseif ($this->role === 'client') {
                 $profileData['stats'] = [
@@ -111,8 +125,18 @@ class UserResource extends JsonResource
 
         // Ensure address fields are correctly merged and prioritized
         // If it's a client, the profileData (Structure) might have address fields that should be preferred or merged
-        return array_merge([
+        // Fix: Si l'adresse dans le profil est null, on la supprime pour ne pas écraser l'adresse de l'utilisateur
+        $overlappingFields = ['adresse', 'code_postal', 'ville', 'telephone'];
+        foreach ($overlappingFields as $field) {
+            if (array_key_exists($field, $profileData) && is_null($profileData[$field])) {
+                unset($profileData[$field]);
+            }
+        }
+
+        return array_merge($userData, $profileData, [
+            'prenom' => $this->prenom,
+            'nom' => $this->nom,
             'name' => "{$this->prenom} {$this->nom}",
-        ], $userData, $profileData);
+        ]);
     }
 }

@@ -56,6 +56,7 @@ class MissionController extends Controller
     {
         $validated = $request->validate([
             'structure_id' => 'required|exists:structures,id',
+            'est_cree_par_admin' => 'nullable|boolean',
             'nb_residents_jour' => 'nullable|integer',
             'types_repas' => 'nullable|array',
             'regimes_speciaux' => 'nullable|array',
@@ -92,9 +93,23 @@ class MissionController extends Controller
             'repas.*.simple_recette_ids' => 'nullable|array',
         ]);
 
+        $user = $request->user();
+
+        if ($user->role !== 'admin') {
+            if (!$user->structure) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seule une structure peut créer une mission.'
+                ], 403);
+            }
+            // Forcer le structure_id de l'utilisateur connecté
+            $validated['structure_id'] = $user->structure->id;
+        }
+
         $dateMission = $validated['date_mission'];
         $heureMission = $validated['heure_mission'];
         $validated['horaire_mission'] = Carbon::parse("$dateMission $heureMission");
+        $validated['date'] = $dateMission;
 
         if (isset($validated['date_fin']) && isset($validated['heure_fin'])) {
             $dateFin = $validated['date_fin'];
@@ -149,13 +164,11 @@ class MissionController extends Controller
      */
     public function update(Request $request, Mission $mission)
     {
-        // On bloque la modification par le client si la mission est déjà confirmée par l'admin
         $user = $request->user();
-        if ($user->structure && $mission->statut === Mission::STATUS_CONFIRMED) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cette mission est déjà confirmée et ne peut plus être modifiée par le client.'
-            ], 403);
+
+        // Seul l'admin peut modifier une mission
+        if ($user->role !== 'admin') {
+            abort(403, 'Seul l\'administrateur peut modifier une mission.');
         }
 
         $validated = $request->validate([
@@ -193,6 +206,10 @@ class MissionController extends Controller
 
         $repasData = $validated['repas'] ?? null;
         unset($validated['repas']);
+        // Update 'date' if 'horaire_mission' is provided
+        if (isset($validated['horaire_mission'])) {
+            $validated['date'] = \Carbon\Carbon::parse($validated['horaire_mission'])->toDateString();
+        }
 
         $mission->update($validated);
 
@@ -253,6 +270,7 @@ class MissionController extends Controller
             'quantite_riz' => 'nullable|numeric',
             'quantite_legumes' => 'nullable|numeric',
             'commentaires' => 'nullable|string',
+            'date' => 'nullable|date',
             'horaire_mission' => 'nullable',
             'horaire_fin' => 'nullable',
             'heure_fin' => 'nullable|string',
@@ -266,6 +284,11 @@ class MissionController extends Controller
         if (isset($validated['recettes_ids'])) {
             $mission->recettes()->sync($validated['recettes_ids']);
             unset($validated['recettes_ids']);
+        }
+
+        // Update 'date' if 'horaire_mission' is provided
+        if (isset($validated['horaire_mission'])) {
+            $validated['date'] = \Carbon\Carbon::parse($validated['horaire_mission'])->toDateString();
         }
 
         // Update the mission with all validated fields
@@ -434,8 +457,13 @@ class MissionController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Mission $mission)
+    public function destroy(Request $request, Mission $mission)
     {
+        // Sécurité : Seul l'admin ou le propriétaire de la mission peut la supprimer
+        if ($request->user()->role !== 'admin' && $mission->structure_id !== $request->user()->structure?->id) {
+            abort(403, 'Vous n\'êtes pas autorisé à supprimer cette mission.');
+        }
+
         $mission->delete();
         return response()->json(['success' => true, 'message' => 'Mission supprimée']);
     }

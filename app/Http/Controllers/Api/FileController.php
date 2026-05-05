@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class FileController extends Controller
@@ -13,27 +14,38 @@ class FileController extends Controller
      */
     public function serve($path)
     {
-        // Nettoyage sommaire du chemin
-        $path = str_replace('..', '', $path);
-        
-        \Log::info("Accès média : " . $path);
+        $publicBase = realpath(Storage::disk('public')->path(''));
+        $fullPath   = Storage::disk('public')->path($path);
 
-        if (!Storage::disk('public')->exists($path)) {
-            \Log::error("Fichier introuvable : " . $path);
-            abort(404);
+        if (!file_exists($fullPath)) {
+            Log::error("Fichier introuvable : " . $path);
+            abort(404, 'Fichier introuvable');
         }
 
-        $fullPath = Storage::disk('public')->path($path);
+        $realPath = realpath($fullPath);
 
-        // Les headers CORS doivent être présents même pour les erreurs ou les pré-vols (OPTIONS)
+        // Bloquer les path traversal
+        if (
+            $realPath === false ||
+            $publicBase === false ||
+            !str_starts_with($realPath, $publicBase . DIRECTORY_SEPARATOR) ||
+            !is_file($realPath)
+        ) {
+            Log::warning("Accès refusé (path traversal ou dossier) : " . $path);
+            abort(403, 'Accès refusé');
+        }
+
+        Log::info("Accès média autorisé : " . $realPath);
+
+        $origin = config('cors.allowed_origins')[0] ?? '';
         $headers = [
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
-            'Access-Control-Allow-Headers' => '*',
+            'Access-Control-Allow-Origin'   => $origin,
+            'Access-Control-Allow-Methods'  => 'GET, OPTIONS',
+            'Access-Control-Allow-Headers'  => 'Authorization, Accept, Content-Type',
             'Access-Control-Expose-Headers' => 'Content-Length, Content-Range, Accept-Ranges',
-            'Accept-Ranges' => 'bytes',
+            'Accept-Ranges'                 => 'bytes',
         ];
 
-        return response()->file($fullPath, $headers);
+        return response()->file($realPath, $headers);
     }
 }

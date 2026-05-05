@@ -17,10 +17,15 @@ use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MenuController;
 
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
-Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+Route::middleware('throttle:60,1')->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+});
+Route::get('/email/verify/{id}/{hash}', [\Illuminate\Auth\Controllers\VerificationController::class, 'verify'])
+    ->middleware(['auth:sanctum', 'signed'])
+    ->name('verification.verify');
 Route::get('/metadata/registration', [MetadataController::class, 'getRegistrationMetadata']);
 
 Route::get('/cors-test', function () {
@@ -28,10 +33,20 @@ Route::get('/cors-test', function () {
 });
 
 // Route pour servir les fichiers avec les headers CORS
+// Les noms de fichiers (UUID) sont imprédictibles, la route est publique pour les balises <img>.
 Route::get('/media/{path}', [FileController::class, 'serve'])->where('path', '.*');
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/stats/admin', [StatsController::class, 'getAdminStats']);
+
+    // ==================== ROUTES ADMIN ====================
+    Route::middleware('admin')->group(function () {
+        Route::get('/stats/admin', [StatsController::class, 'getAdminStats']);
+        Route::get('/professionals', [AuthController::class, 'professionals']);
+        Route::get('/structures', [AuthController::class, 'structures']);
+        Route::put('/users/{user}/validate', [AuthController::class, 'validateUser']);
+        Route::delete('/users/{user}', [AuthController::class, 'deleteUser']);
+    });
+
     Route::get('/stats/structure', [StatsController::class, 'getStructureStats']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', function (Request $request) {
@@ -41,10 +56,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/user/password', [AuthController::class, 'changePassword']);
     Route::get('/profile', [AuthController::class, 'profile']);
 
-    Route::get('/professionals', [AuthController::class, 'professionals']);
-    Route::get('/structures', [AuthController::class, 'structures']);
-    Route::put('/users/{user}/validate', [AuthController::class, 'validateUser']);
-    Route::delete('/users/{user}', [AuthController::class, 'deleteUser']);
     Route::put('missions/{mission}/process', [MissionController::class, 'process']);
     Route::put('missions/{mission}/checklist', [MissionController::class, 'updateChecklist']);
     Route::post('missions/{mission}/finish', [MissionController::class, 'finish']);
@@ -53,6 +64,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('missions/{mission}/messages', [ChatController::class, 'index']);
     Route::post('missions/{mission}/messages', [ChatController::class, 'store']);
     Route::put('missions/{mission}/messages/read', [ChatController::class, 'markAsRead']);
+    
+    // Routes de Chat par structure
+    Route::get('structures/{structure}/messages', [ChatController::class, 'structureIndex']);
+    Route::post('structures/{structure}/messages', [ChatController::class, 'structureStore']);
+    Route::put('structures/{structure}/messages/read', [ChatController::class, 'structureMarkAsRead']);
+
     Route::put('messages/{message}/handled', [ChatController::class, 'markAsHandled']);
     Route::get('/notifications', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
     Route::post('/notifications/mark-all-read', [\App\Http\Controllers\Api\NotificationController::class, 'markAllAsRead']);
@@ -61,6 +78,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('formations', FormationController::class);
     Route::apiResource('recettes', RecetteController::class);
     Route::apiResource('documents', DocumentController::class);
+    Route::get('/my-documents', [DocumentController::class, 'myDocuments']);
     Route::apiResource('incidents', IncidentController::class);
     Route::apiResource('retours', RetourController::class);
     Route::apiResource('menus', MenuController::class);
