@@ -13,7 +13,7 @@ class NotificationController extends Controller
      */
     public function index(Request $request)
     {
-        $notifications = $request->user()->notifications()->latest()->take(50)->get();
+        $notifications = $request->user()->unreadNotifications()->latest()->take(50)->get();
         return NotificationResource::collection($notifications);
     }
 
