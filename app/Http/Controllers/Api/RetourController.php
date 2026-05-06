@@ -11,9 +11,18 @@ class RetourController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        return Retour::with('mission')->get();
+        $query = Retour::with('mission');
+
+        if ($request->has('mission_id')) {
+            $query->where('mission_id', $request->mission_id);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $query->get()
+        ]);
     }
 
     /**

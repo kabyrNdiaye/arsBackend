@@ -31,7 +31,14 @@ class IncidentController extends Controller
         }
         // Les admins voient tout
 
-        return $query->orderBy('created_at', 'desc')->get();
+        if ($request->has('mission_id')) {
+            $query->where('mission_id', $request->mission_id);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $query->orderBy('created_at', 'desc')->get()
+        ]);
     }
 
     /**
