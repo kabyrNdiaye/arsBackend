@@ -40,6 +40,10 @@ class RetourController extends Controller
 
         $retour = Retour::create($validated);
 
+        // Envoyer la notification aux admins
+        $admins = \App\Models\User::where('role', 'admin')->get();
+        \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\NewRetourNotification($retour));
+
         return response()->json([
             'message' => 'Retour créé avec succès',
             'data'    => $retour

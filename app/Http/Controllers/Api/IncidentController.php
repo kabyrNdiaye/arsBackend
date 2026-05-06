@@ -70,6 +70,10 @@ class IncidentController extends Controller
 
         $incident = Incident::create($validated);
 
+        // Envoyer la notification aux admins
+        $admins = \App\Models\User::where('role', 'admin')->get();
+        \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\NewIncidentNotification($incident));
+
         return response()->json([
             'success' => true,
             'message' => 'Incident créé avec succès',
