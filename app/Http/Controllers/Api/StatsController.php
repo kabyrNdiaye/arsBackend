@@ -24,8 +24,8 @@ class StatsController extends Controller
         
         // --- Dashboard Main Stats ---
         
-        // Count missions scheduled for today
-        $missionsToday = Mission::whereDate('horaire_mission', $today)->count();
+        // Count missions created today
+        $missionsToday = Mission::whereDate('created_at', $today)->count();
         
         // Total missions ever
         $totalMissions = Mission::count();
