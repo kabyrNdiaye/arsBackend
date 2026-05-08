@@ -188,6 +188,12 @@ class AuthController extends Controller
 
             DB::commit();
 
+            // Notifier les administrateurs
+            $admins = User::where('role', 'admin')->get();
+            foreach ($admins as $admin) {
+                $admin->notify(new \App\Notifications\NewUserRegistered($user));
+            }
+
             $token = $user->createToken('auth_token')->plainTextToken;
 
             // Recharger l'utilisateur avec ses relations pour la réponse
@@ -315,6 +321,17 @@ class AuthController extends Controller
         }
 
         $profile->update(['statut_validation' => $validated['statut_validation']]);
+
+        // Marquer la notification 'new_user' comme lue pour tous les admins une fois validé/refusé
+        $admins = \App\Models\User::where('role', 'admin')->get();
+        foreach ($admins as $admin) {
+            $notifications = $admin->unreadNotifications()->get();
+            foreach ($notifications as $notif) {
+                if (isset($notif->data['type']) && $notif->data['type'] === 'new_user' && isset($notif->data['user_id']) && $notif->data['user_id'] == $user->id) {
+                    $notif->markAsRead();
+                }
+            }
+        }
 
         $statutLabel = $validated['statut_validation'] === 'valide' ? 'validé' : 'refusé';
 

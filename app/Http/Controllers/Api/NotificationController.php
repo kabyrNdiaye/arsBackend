@@ -22,7 +22,14 @@ class NotificationController extends Controller
      */
     public function markAllAsRead(Request $request)
     {
-        $request->user()->unreadNotifications->markAsRead();
+        $notifications = $request->user()->unreadNotifications()->get();
+        foreach ($notifications as $notification) {
+            if (isset($notification->data['type']) && $notification->data['type'] === 'new_user') {
+                continue; // On ne permet pas de marquer globalement comme lues les inscriptions en attente
+            }
+            $notification->markAsRead();
+        }
+        
         return response()->json(['success' => true, 'message' => 'Notifications marquées comme lues']);
     }
 
@@ -33,6 +40,9 @@ class NotificationController extends Controller
     {
         $notification = $request->user()->notifications()->where('id', $id)->first();
         if ($notification) {
+            if (isset($notification->data['type']) && $notification->data['type'] === 'new_user') {
+                return response()->json(['success' => false, 'message' => 'Cette notification sera masquée automatiquement lors de la validation ou du refus.'], 403);
+            }
             $notification->markAsRead();
             return response()->json(['success' => true, 'message' => 'Notification marquée comme lue']);
         }
