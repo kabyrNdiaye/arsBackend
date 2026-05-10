@@ -8,6 +8,7 @@ use App\Models\Mission;
 use App\Models\MissionResponse;
 use App\Models\User;
 use App\Notifications\MissionCreated;
+use App\Notifications\MissionCancelledNotification;
 use App\Notifications\MissionValidated;
 use App\Http\Resources\MissionResource;
 use Carbon\Carbon;
@@ -443,6 +444,61 @@ class MissionController extends Controller
             'success' => true,
             'message' => 'Mission terminée avec succès.',
             'data' => new MissionResource($mission)
+        ]);
+    }
+
+    /**
+     * Annuler une mission acceptée (Côté Professionnel)
+     */
+    public function cancel(Request $request, Mission $mission)
+    {
+        $user = $request->user();
+        if (!$user->professionnel) {
+            return response()->json(['success' => false, 'message' => 'Seuls les professionnels peuvent annuler une mission.'], 403);
+        }
+
+        if ($mission->professionnel_id !== $user->professionnel->id) {
+            return response()->json(['success' => false, 'message' => 'Vous ne pouvez annuler que vos propres missions.'], 403);
+        }
+
+        if (!in_array($mission->statut, [Mission::STATUS_IN_PROGRESS, Mission::STATUS_CONFIRMED])) {
+            return response()->json(['success' => false, 'message' => 'Seule une mission acceptée peut être annulée.'], 400);
+        }
+
+        $validated = $request->validate([
+            'motif' => 'required|string|min:10|max:500',
+        ]);
+
+        // Vérifier si l'annulation est tardive (< 24h avant la mission)
+        $isLate = false;
+        if ($mission->horaire_mission) {
+            $horaire = Carbon::parse($mission->horaire_mission);
+            $isLate = $horaire->diffInHours(now(), false) > -24; // true si moins de 24h
+        }
+
+        $professionnelName = $user->name ?? ($user->professionnel->prenom . ' ' . $user->professionnel->nom);
+
+        // Libérer la mission
+        $mission->update([
+            'professionnel_id' => null,
+            'statut'           => Mission::STATUS_CONFIRMED,
+        ]);
+
+        // Supprimer la response du professionnel pour qu'il puisse re-accepter ou qu'un autre prenne
+        \App\Models\MissionResponse::where('mission_id', $mission->id)
+            ->where('professionnel_id', $user->professionnel->id)
+            ->delete();
+
+        // Notifier tous les admins
+        $admins = User::where('role', 'admin')->get();
+        foreach ($admins as $admin) {
+            $admin->notify(new MissionCancelledNotification($mission, $validated['motif'], $professionnelName, $isLate));
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_late' => $isLate,
+            'message' => 'Mission annulée. L\'administrateur a été notifié.',
         ]);
     }
 

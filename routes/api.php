@@ -85,6 +85,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('missions/{mission}/finish', [MissionController::class, 'finish']);
     Route::post('missions/{mission}/accept', [MissionController::class, 'accept']);
     Route::post('missions/{mission}/reject', [MissionController::class, 'reject']);
+    Route::post('missions/{mission}/cancel', [MissionController::class, 'cancel']);
     Route::get('missions/{mission}/messages', [ChatController::class, 'index']);
     Route::post('missions/{mission}/messages', [ChatController::class, 'store']);
     Route::put('missions/{mission}/messages/read', [ChatController::class, 'markAsRead']);

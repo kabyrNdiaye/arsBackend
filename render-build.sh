@@ -10,3 +10,9 @@ php artisan optimize:clear
 
 echo "Exécution des migrations..."
 php artisan migrate --force
+
+echo "Lien du stockage..."
+php artisan storage:link
+
+echo "Optimisation finale..."
+php artisan optimize
