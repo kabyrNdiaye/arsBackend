@@ -44,7 +44,7 @@ class FileController extends Controller
             'Access-Control-Allow-Headers'  => '*',
             'Access-Control-Expose-Headers' => 'Content-Length, Content-Range, Accept-Ranges',
             'Accept-Ranges'                 => 'bytes',
-            'X-Frame-Options'               => 'ALLOWALL', // Permettre l'iframe sur Web
+            // X-Frame-Options est omis ici car géré par CSP ou par l'absence globale de DENY pour les médias
             'Content-Security-Policy'       => "frame-ancestors *", // CSP moderne pour l'iframe
         ];
 
