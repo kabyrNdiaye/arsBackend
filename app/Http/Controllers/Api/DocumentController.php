@@ -95,13 +95,14 @@ class DocumentController extends Controller
         }
 
         $file = $request->file('document');
+        $originalName = $file->getClientOriginalName();
         $folder = $user->role === 'professionnel' ? 'documents/professionnels' : 'documents/clients';
         $ext = $file->getClientOriginalExtension();
         $filename = Str::uuid() . '.' . $ext;
         $path = $file->storeAs($folder, $filename, 'public');
 
         $document = $profile->documents()->create([
-            'nom' => $validated['nom'],
+            'nom' => $originalName, // Utiliser le nom original du fichier
             'type' => $validated['type'] ?? 'document',
             'cheminFichier' => $path,
             'statut' => 'actif'

@@ -30,10 +30,7 @@ class UserResource extends JsonResource
         // Extraire les documents de la table polymorphe et les rajouter au profil
         $profile = ($this->role === 'client') ? $this->structure : $this->professionnel;
         
-        $baseUrl = rtrim(url('/'), '/');
-        if (str_contains($baseUrl, 'onrender.com')) {
-            $baseUrl = str_replace('http://', 'https://', $baseUrl);
-        }
+        $baseUrl = $request->getSchemeAndHttpHost();
 
         // 1. Charger les documents du USER lui-même (ex: pour les admins)
         if ($this->relationLoaded('documents')) {

@@ -161,39 +161,50 @@ class AuthController extends Controller
 
             // 3. Enregistrement des documents dans la table polymorphe
             if (isset($profile)) {
-                foreach ($filePaths as $field => $path) {
-                    if ($path) {
-                        if (is_array($path)) {
-                            // Cas de multiples fichiers (ex: diplômes)
-                            foreach ($path as $p) {
+                    // Mappage des noms pour un affichage propre
+                    $namingMap = [
+                        'photo_profil_path'       => 'Photo de profil',
+                        'diplome_path'            => 'Diplôme',
+                        'certificat_medical_path' => 'Certificat médical',
+                        'permis_conduire_path'    => 'Permis de conduire',
+                        'contrat_prestation_path' => 'Contrat de prestation',
+                        'plan_locaux_path'        => 'Plan des locaux',
+                        'reglement_interieur_path'=> 'Règlement intérieur',
+                    ];
+
+                    foreach ($filePaths as $field => $path) {
+                        if ($path) {
+                            $displayName = $namingMap[$field] ?? $field;
+                            
+                            if (is_array($path)) {
+                                foreach ($path as $p) {
+                                    $profile->documents()->create([
+                                        'nom' => $displayName,
+                                        'type' => 'document',
+                                        'cheminFichier' => $p,
+                                        'statut' => 'actif'
+                                    ]);
+                                }
+                            } else {
                                 $profile->documents()->create([
-                                    'nom' => $field,
+                                    'nom' => $displayName,
                                     'type' => 'document',
-                                    'cheminFichier' => $p,
+                                    'cheminFichier' => $path,
                                     'statut' => 'actif'
                                 ]);
                             }
-                        } else {
-                            // Cas d'un fichier unique
-                            $profile->documents()->create([
-                                'nom' => $field,
-                                'type' => 'document',
-                                'cheminFichier' => $path,
-                                'statut' => 'actif'
-                            ]);
+
+                            // Aussi enregistrer la photo sur le User lui-même pour une meilleure visibilité globale
+                            if ($field === 'photo_profil_path') {
+                                $user->documents()->create([
+                                    'nom' => $displayName,
+                                    'type' => 'document',
+                                    'cheminFichier' => is_array($path) ? $path[0] : $path,
+                                    'statut' => 'actif'
+                                ]);
+                            }
                         }
                     }
-
-                    // Aussi enregistrer la photo sur le User lui-même pour une meilleure visibilité globale
-                    if ($field === 'photo_profil_path' && $path) {
-                        $user->documents()->create([
-                            'nom' => 'photo_profil_path',
-                            'type' => 'document',
-                            'cheminFichier' => is_array($path) ? $path[0] : $path,
-                            'statut' => 'actif'
-                        ]);
-                    }
-                }
             }
 
             DB::commit();
@@ -502,13 +513,14 @@ class AuthController extends Controller
 
             // Déterminer le profil lié (professionnel ou structure)
             $profile = $user->role === 'professionnel' ? $user->professionnel : $user->structure;
+            $photoName = 'Photo de profil';
 
             if ($profile) {
-                // Supprimer l'ancienne photo du profil
-                $profile->documents()->where('nom', 'photo_profil_path')->delete();
-                // Sauvegarder sur le profil (professionnel ou structure)
+                // Supprimer l'ancienne photo (qu'elle porte le nom technique ou le beau nom)
+                $profile->documents()->whereIn('nom', ['photo_profil_path', $photoName])->delete();
+                // Sauvegarder sur le profil
                 $profile->documents()->create([
-                    'nom' => 'photo_profil_path',
+                    'nom' => $photoName,
                     'type' => 'document',
                     'cheminFichier' => $path,
                     'statut' => 'actif'
@@ -516,45 +528,46 @@ class AuthController extends Controller
             }
 
             // Aussi mettre à jour sur le User pour les admins
-            $user->documents()->where('nom', 'photo_profil_path')->delete();
+            $user->documents()->whereIn('nom', ['photo_profil_path', $photoName])->delete();
             $user->documents()->create([
-                'nom' => 'photo_profil_path',
+                'nom' => $photoName,
                 'type' => 'document',
                 'cheminFichier' => $path,
                 'statut' => 'actif'
             ]);
         }
 
-        // Gestion des documents professionnels (diplome, certificat médical, permis)
-        $documentFields = ['diplome_path', 'certificat_medical_path', 'permis_conduire_path'];
+        // Gestion des documents professionnels
+        $documentFields = [
+            'diplome_path'            => 'Diplôme',
+            'certificat_medical_path' => 'Certificat médical',
+            'permis_conduire_path'    => 'Permis de conduire',
+        ];
 
-        foreach ($documentFields as $field) {
+        foreach ($documentFields as $field => $displayName) {
             if ($request->hasFile($field) && $request->file($field)->isValid()) {
                 $file = $request->file($field);
                 $ext = $file->getClientOriginalExtension();
                 $filename = Str::uuid() . '.' . $ext;
                 $path = $file->storeAs('documents/professionnels', $filename, 'public');
 
-                // Uniquement pour les professionnels
                 $profile = $user->role === 'professionnel' ? $user->professionnel : null;
 
                 if ($profile) {
-                    // Supprimer l'ancien fichier physique si existant
-                    $oldDoc = $profile->documents()->where('nom', $field)->first();
-                    if ($oldDoc) {
+                    // Supprimer l'ancien (nom technique ou beau nom)
+                    $oldDocs = $profile->documents()->whereIn('nom', [$field, $displayName])->get();
+                    foreach ($oldDocs as $oldDoc) {
                         Storage::disk('public')->delete($oldDoc->cheminFichier);
                         $oldDoc->delete();
                     }
-                    // Sauvegarder le nouveau document
+                    // Sauvegarder le nouveau
                     $profile->documents()->create([
-                        'nom' => $field,
+                        'nom' => $displayName,
                         'type' => 'document',
                         'cheminFichier' => $path,
                         'statut' => 'actif'
                     ]);
                 }
-
-                Log::info("Document $field mis à jour", ['path' => $path, 'user_id' => $user->id]);
             }
         }
 
