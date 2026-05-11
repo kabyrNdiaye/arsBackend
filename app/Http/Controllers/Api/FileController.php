@@ -16,19 +16,27 @@ class FileController extends Controller
     {
         $publicBase = realpath(Storage::disk('public')->path(''));
         $fullPath   = Storage::disk('public')->path($path);
+        $realPath   = realpath($fullPath);
+
+        Log::info("FileController@serve: ", [
+            'raw_path' => $path,
+            'full_path' => $fullPath,
+            'real_path' => $realPath,
+            'public_base' => $publicBase,
+            'exists' => file_exists($fullPath),
+            'is_file' => ($realPath && is_file($realPath))
+        ]);
 
         if (!file_exists($fullPath)) {
-            Log::error("Fichier introuvable : " . $path);
-            abort(404, 'Fichier introuvable');
+            Log::error("Fichier introuvable sur le disque : " . $fullPath);
+            abort(404, 'Fichier introuvable sur le disque');
         }
-
-        $realPath = realpath($fullPath);
 
         // Bloquer les path traversal
         if (
             $realPath === false ||
             $publicBase === false ||
-            !str_starts_with($realPath, $publicBase . DIRECTORY_SEPARATOR) ||
+            !str_starts_with($realPath, $publicBase) ||
             !is_file($realPath)
         ) {
             Log::warning("Accès refusé (path traversal ou dossier) : " . $path);
