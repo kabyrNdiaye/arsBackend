@@ -80,7 +80,7 @@ class UserResource extends JsonResource
 
             // Exposer TOUS les documents du profil dans un tableau structuré
             $profileData['documents'] = $profile->documents->filter(function ($doc) {
-                return $doc->nom !== 'photo_profil_path' && !empty($doc->cheminFichier);
+                return !empty($doc->cheminFichier);
             })->map(function ($doc) use ($baseUrl) {
                 return [
                     'id'       => $doc->id,
