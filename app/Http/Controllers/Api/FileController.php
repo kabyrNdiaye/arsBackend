@@ -39,11 +39,13 @@ class FileController extends Controller
 
         $origin = config('cors.allowed_origins')[0] ?? '';
         $headers = [
-            'Access-Control-Allow-Origin'   => $origin,
+            'Access-Control-Allow-Origin'   => '*',
             'Access-Control-Allow-Methods'  => 'GET, OPTIONS',
-            'Access-Control-Allow-Headers'  => 'Authorization, Accept, Content-Type',
+            'Access-Control-Allow-Headers'  => '*',
             'Access-Control-Expose-Headers' => 'Content-Length, Content-Range, Accept-Ranges',
             'Accept-Ranges'                 => 'bytes',
+            'X-Frame-Options'               => 'ALLOWALL', // Permettre l'iframe sur Web
+            'Content-Security-Policy'       => "frame-ancestors *", // CSP moderne pour l'iframe
         ];
 
         return response()->file($realPath, $headers);
