@@ -155,11 +155,18 @@ class UserResource extends JsonResource
             }
         }
 
+        // Suppression agressive des placeholders hérités (ex: diplome_path.pdf)
+        foreach ($profileData as $key => $value) {
+            if (is_string($value) && (str_ends_with($value, '_path.pdf') || str_ends_with($value, '_path.jpg') || str_ends_with($value, '_path.png'))) {
+                unset($profileData[$key]);
+            }
+        }
+
         $result = array_merge((array)$userData, (array)$profileData, [
             'prenom' => $this->prenom,
             'nom' => $this->nom,
             'name' => "{$this->prenom} {$this->nom}",
-            'debug_https_fix' => 'active_v3_nuclear',
+            'debug_https_fix' => 'active_v4_nuclear',
         ]);
 
         // Forcer le HTTPS pour toutes les URLs Render
