@@ -24,7 +24,7 @@ class DocumentController extends Controller
         }
 
         $baseUrl  = url('/');
-        $fixedKeys   = ['diplome_path', 'certificat_medical_path', 'permis_conduire_path'];
+        $fixedKeys   = ['diplome_path', 'certificat_medical_path', 'permis_conduire_path', 'Curriculum Vitae(CV)', 'Carte d\'identité', 'Diplôme de cuisine'];
         $excludeKeys = ['photo_profil_path']; // jamais dans la liste des documents
         $allDocs     = $profile->documents()->orderBy('created_at', 'asc')->get();
 
@@ -50,7 +50,7 @@ class DocumentController extends Controller
 
         return response()->json([
             'success' => true,
-            'fixed'   => $fixed,  // diplome_path, certificat_medical_path, permis_conduire_path
+            'fixed'   => $fixed,  // diplome_path, certificat_medical_path, permis_conduire_path, etc.
             'extra'   => $extra,  // documents ajoutés après l'inscription
             'all'     => array_values(array_merge(array_values($fixed), $extra)),
         ]);
@@ -101,8 +101,11 @@ class DocumentController extends Controller
         $filename = Str::uuid() . '.' . $ext;
         $path = $file->storeAs($folder, $filename, 'public');
 
+        // Utiliser le nom passé par le frontend s'il existe, sinon le nom original du fichier
+        $docName = $validated['nom'] ?? $originalName;
+
         $document = $profile->documents()->create([
-            'nom' => $originalName, // Utiliser le nom original du fichier
+            'nom' => $docName,
             'type' => $validated['type'] ?? 'document',
             'cheminFichier' => $path,
             'statut' => 'actif'
