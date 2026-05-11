@@ -183,6 +183,16 @@ class AuthController extends Controller
                             ]);
                         }
                     }
+
+                    // Aussi enregistrer la photo sur le User lui-même pour une meilleure visibilité globale
+                    if ($field === 'photo_profil_path' && $path) {
+                        $user->documents()->create([
+                            'nom' => 'photo_profil_path',
+                            'type' => 'document',
+                            'cheminFichier' => is_array($path) ? $path[0] : $path,
+                            'statut' => 'actif'
+                        ]);
+                    }
                 }
             }
 

@@ -32,9 +32,6 @@ class DocumentController extends Controller
         $extra = [];
 
         foreach ($allDocs as $doc) {
-            // Exclure la photo de profil
-            if (in_array($doc->nom, $excludeKeys)) continue;
-
             $item = [
                 'id'         => $doc->id,
                 'nom'        => $doc->nom,
