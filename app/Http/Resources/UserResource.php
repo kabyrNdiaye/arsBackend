@@ -66,11 +66,28 @@ class UserResource extends JsonResource
                 }
             }
 
+            // Mappage inverse pour que le frontend retrouve ses petits via les clés historiques
+            $reverseMapping = [
+                'Photo de profil'      => 'photo_profil_path',
+                'Diplôme'              => 'diplome_path',
+                'Certificat médical'   => 'certificat_medical_path',
+                'Permis de conduire'   => 'permis_conduire_path',
+                'Contrat de prestation'=> 'contrat_prestation_path',
+                'Plan des locaux'      => 'plan_locaux_path',
+                'Règlement intérieur'  => 'reglement_interieur_path',
+            ];
+
             // Charger les documents du profil
             if ($profile->relationLoaded('documents') || $profile->documents()->exists()) {
                 foreach ($profile->documents as $doc) {
                     if ($doc->cheminFichier && $doc->nom) {
-                        $profileData[$doc->nom] = $baseUrl . '/api/media/' . ltrim($doc->cheminFichier, '/');
+                        $url = $baseUrl . '/api/media/' . ltrim($doc->cheminFichier, '/');
+                        // 1. On garde le nom lisible
+                        $profileData[$doc->nom] = $url;
+                        // 2. On écrase le champ technique historique s'il existe dans le reverse mapping
+                        if (isset($reverseMapping[$doc->nom])) {
+                            $profileData[$reverseMapping[$doc->nom]] = $url;
+                        }
                     }
                 }
             }
