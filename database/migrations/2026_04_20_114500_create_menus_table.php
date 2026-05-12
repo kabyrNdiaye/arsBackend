@@ -11,16 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('menus', function (Blueprint $table) {
-            $table->id();
-            $table->string('nom');
-            $table->string('type'); // Petit-Déjeuner, Déjeuner, Dîner, etc.
-            $table->text('description')->nullable();
-            $table->string('status')->default('Brouillon');
-            $table->json('diets')->nullable(); // Liste des régimes compatibles
-            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->timestamps();
-        });
+        if (!Schema::hasTable('menus')) {
+            Schema::create('menus', function (Blueprint $table) {
+                $table->id();
+                $table->string('nom');
+                $table->string('type'); // Petit-Déjeuner, Déjeuner, Dîner, etc.
+                $table->text('description')->nullable();
+                $table->string('status')->default('Brouillon');
+                $table->json('diets')->nullable(); // Liste des régimes compatibles
+                $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+                $table->timestamps();
+            });
+        }
     }
 
     /**

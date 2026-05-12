@@ -11,15 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('mission_responses', function (Blueprint $blueprint) {
-            $blueprint->id();
-            $blueprint->foreignId('mission_id')->constrained()->onDelete('cascade');
-            $blueprint->foreignId('professionnel_id')->constrained()->onDelete('cascade');
-            $blueprint->string('status'); // 'accepted', 'rejected'
-            $blueprint->timestamps();
+        if (!Schema::hasTable('mission_responses')) {
+            Schema::create('mission_responses', function (Blueprint $blueprint) {
+                $blueprint->id();
+                $blueprint->foreignId('mission_id')->constrained()->onDelete('cascade');
+                $blueprint->foreignId('professionnel_id')->constrained()->onDelete('cascade');
+                $blueprint->string('status'); // 'accepted', 'rejected'
+                $blueprint->timestamps();
 
-            $blueprint->unique(['mission_id', 'professionnel_id']);
-        });
+                $blueprint->unique(['mission_id', 'professionnel_id']);
+            });
+        }
     }
 
     /**

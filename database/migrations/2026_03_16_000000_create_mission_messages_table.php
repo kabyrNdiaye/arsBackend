@@ -11,18 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('mission_messages', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('mission_id')->constrained()->onDelete('cascade');
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->enum('type', ['text', 'image', 'file', 'location', 'contact', 'audio'])->default('text');
-            $table->text('content')->nullable();
-            $table->string('file_path')->nullable();
-            $table->decimal('latitude', 10, 8)->nullable();
-            $table->decimal('longitude', 11, 8)->nullable();
-            $table->boolean('is_read')->default(false);
-            $table->timestamps();
-        });
+        if (!Schema::hasTable('mission_messages')) {
+            Schema::create('mission_messages', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('mission_id')->constrained()->onDelete('cascade');
+                $table->foreignId('user_id')->constrained()->onDelete('cascade');
+                $table->enum('type', ['text', 'image', 'file', 'location', 'contact', 'audio'])->default('text');
+                $table->text('content')->nullable();
+                $table->string('file_path')->nullable();
+                $table->decimal('latitude', 10, 8)->nullable();
+                $table->decimal('longitude', 11, 8)->nullable();
+                $table->boolean('is_read')->default(false);
+                $table->timestamps();
+            });
+        }
     }
 
     /**
