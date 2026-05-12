@@ -466,78 +466,90 @@ class AuthController extends Controller
         $user = $request->user();
 
         $validator = Validator::make($request->all(), [
-            'firstName' => 'nullable|string|max:255',
-            'lastName' => 'nullable|string|max:255',
-            'email' => [
-                'nullable',
-                'string',
-                'email',
-                'max:255',
-                Rule::unique('users')->ignore($user->id),
-            ],
-            'phone' => 'nullable|string|max:20',
-            'photo_profil_path' => 'nullable|file|mimes:jpg,jpeg,png|max:10240',
-            'diplome_path' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
-            'certificat_medical_path' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
-            'permis_conduire_path' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'firstName'                => 'nullable|string|max:255',
+            'lastName'                 => 'nullable|string|max:255',
+            'email'                    => ['nullable', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'phone'                    => 'nullable|string|max:20',
+            'adresse'                  => 'nullable|string',
+            'code_postal'              => 'nullable|string|max:10',
+            'ville'                    => 'nullable|string|max:100',
+            'nom_etablissement'        => 'nullable|string|max:255',
+            'telephone_etablissement'  => 'nullable|string|max:20',
+            'type_etablissement'       => 'nullable|string|max:100',
+            'capacite'                 => 'nullable|integer',
+            'fonction'                 => 'nullable|string|max:100',
+            'photo_profil_path'        => 'nullable|file|mimes:jpg,jpeg,png|max:10240',
+            'diplome_path'             => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'certificat_medical_path'  => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'permis_conduire_path'     => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
 
-        $data = $request->only(['firstName', 'lastName', 'email', 'phone']);
-
-        if (isset($data['firstName'])) $user->prenom = $data['firstName'];
-        if (isset($data['lastName'])) $user->nom = $data['lastName'];
-        if (isset($data['email'])) $user->email = $data['email'];
-        if (isset($data['phone'])) $user->telephone = $data['phone'];
-
+        // ── Mise à jour de l'utilisateur ────────────────────────────────────
+        if ($request->filled('firstName'))  $user->prenom    = $request->firstName;
+        if ($request->filled('lastName'))   $user->nom       = $request->lastName;
+        if ($request->filled('email'))      $user->email     = $request->email;
+        if ($request->filled('phone'))      $user->telephone = $request->phone;
+        if ($request->filled('adresse'))    $user->adresse   = $request->adresse;
+        if ($request->filled('code_postal')) $user->code_postal = $request->code_postal;
+        if ($request->filled('ville'))      $user->ville     = $request->ville;
         $user->save();
 
-        // Debug log pour voir ce qui arrive au backend
+        // ── Mise à jour de la structure (si client) ─────────────────────────
+        if ($user->role === 'client' && $user->structure) {
+            $structureData = [];
+            if ($request->filled('adresse'))                 $structureData['adresse']                = $request->adresse;
+            if ($request->filled('code_postal'))             $structureData['code_postal']            = $request->code_postal;
+            if ($request->filled('ville'))                   $structureData['ville']                  = $request->ville;
+            if ($request->filled('nom_etablissement'))       $structureData['nom_etablissement']      = $request->nom_etablissement;
+            if ($request->filled('telephone_etablissement')) $structureData['telephone_etablissement'] = $request->telephone_etablissement;
+            if ($request->filled('type_etablissement'))      $structureData['type_etablissement']     = $request->type_etablissement;
+            if ($request->filled('capacite'))                $structureData['capacite']               = $request->capacite;
+            if ($request->filled('fonction'))                $structureData['fonction']               = $request->fonction;
+
+            if (!empty($structureData)) {
+                $user->structure->update($structureData);
+            }
+        }
+
+        // ── Mise à jour du professionnel (si professionnel) ─────────────────
+        if ($user->role === 'professionnel' && $user->professionnel) {
+            $proData = [];
+            if ($request->filled('adresse'))    $proData['adresse']    = $request->adresse;
+            if ($request->filled('code_postal')) $proData['code_postal'] = $request->code_postal;
+            if ($request->filled('ville'))      $proData['ville']      = $request->ville;
+            if ($request->filled('fonction'))   $proData['fonction']   = $request->fonction;
+
+            if (!empty($proData)) {
+                $user->professionnel->update($proData);
+            }
+        }
+
         \Illuminate\Support\Facades\Log::info('Update Profile Request:', [
             'has_file' => $request->hasFile('photo_profil_path'),
             'file_valid' => $request->hasFile('photo_profil_path') && $request->file('photo_profil_path')->isValid(),
         ]);
 
-        // Gestion de la photo de profil
+        // ── Photo de profil ─────────────────────────────────────────────────
         if ($request->hasFile('photo_profil_path') && $request->file('photo_profil_path')->isValid()) {
-            $file = $request->file('photo_profil_path');
-            $ext = $file->getClientOriginalExtension();
-            $filename = Str::uuid() . '.' . $ext;
-            $path = $file->storeAs('images/profils', $filename, 'public');
-
-            // Déterminer le profil lié (professionnel ou structure)
-            $profile = $user->role === 'professionnel' ? $user->professionnel : $user->structure;
+            $file     = $request->file('photo_profil_path');
+            $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
+            $path     = $file->storeAs('images/profils', $filename, 'public');
             $photoName = 'Photo de profil';
 
+            $profile = $user->role === 'professionnel' ? $user->professionnel : $user->structure;
             if ($profile) {
-                // Supprimer l'ancienne photo (qu'elle porte le nom technique ou le beau nom)
                 $profile->documents()->whereIn('nom', ['photo_profil_path', $photoName])->delete();
-                // Sauvegarder sur le profil
-                $profile->documents()->create([
-                    'nom' => $photoName,
-                    'type' => 'document',
-                    'cheminFichier' => $path,
-                    'statut' => 'actif'
-                ]);
+                $profile->documents()->create(['nom' => $photoName, 'type' => 'document', 'cheminFichier' => $path, 'statut' => 'actif']);
             }
-
-            // Aussi mettre à jour sur le User pour les admins
             $user->documents()->whereIn('nom', ['photo_profil_path', $photoName])->delete();
-            $user->documents()->create([
-                'nom' => $photoName,
-                'type' => 'document',
-                'cheminFichier' => $path,
-                'statut' => 'actif'
-            ]);
+            $user->documents()->create(['nom' => $photoName, 'type' => 'document', 'cheminFichier' => $path, 'statut' => 'actif']);
         }
 
-        // Gestion des documents professionnels
+        // ── Documents professionnels ─────────────────────────────────────────
         $documentFields = [
             'diplome_path'            => 'Diplôme',
             'certificat_medical_path' => 'Certificat médical',
@@ -546,35 +558,26 @@ class AuthController extends Controller
 
         foreach ($documentFields as $field => $displayName) {
             if ($request->hasFile($field) && $request->file($field)->isValid()) {
-                $file = $request->file($field);
-                $ext = $file->getClientOriginalExtension();
-                $filename = Str::uuid() . '.' . $ext;
-                $path = $file->storeAs('documents/professionnels', $filename, 'public');
-
-                $profile = $user->role === 'professionnel' ? $user->professionnel : null;
+                $file     = $request->file($field);
+                $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
+                $path     = $file->storeAs('documents/professionnels', $filename, 'public');
+                $profile  = $user->role === 'professionnel' ? $user->professionnel : null;
 
                 if ($profile) {
-                    // Supprimer l'ancien (nom technique ou beau nom)
                     $oldDocs = $profile->documents()->whereIn('nom', [$field, $displayName])->get();
                     foreach ($oldDocs as $oldDoc) {
                         Storage::disk('public')->delete($oldDoc->cheminFichier);
                         $oldDoc->delete();
                     }
-                    // Sauvegarder le nouveau
-                    $profile->documents()->create([
-                        'nom' => $displayName,
-                        'type' => 'document',
-                        'cheminFichier' => $path,
-                        'statut' => 'actif'
-                    ]);
+                    $profile->documents()->create(['nom' => $displayName, 'type' => 'document', 'cheminFichier' => $path, 'statut' => 'actif']);
                 }
             }
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Profil mis à jour avec succès (v4-NUCLEAR)',
-            'user' => new UserResource($user->fresh(['structure.documents', 'professionnel.documents', 'documents'])),
+            'message' => 'Profil mis à jour avec succès',
+            'user'    => new UserResource($user->fresh(['structure.documents', 'professionnel.documents', 'documents'])),
         ]);
     }
 

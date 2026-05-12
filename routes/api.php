@@ -23,63 +23,24 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 });
-Route::get('/email/verify/{id}/{hash}', [\Illuminate\Auth\Controllers\VerificationController::class, 'verify'])
-    ->middleware(['auth:sanctum', 'signed'])
-    ->name('verification.verify');
+Route::get('/email/verify/{id}/{hash}', function (\Illuminate\Http\Request $request, $id, $hash) {
+    $user = \App\Models\User::findOrFail($id);
+    if (!hash_equals((string) $hash, sha1($user->getEmailForVerification()))) {
+        return response()->json(['success' => false, 'message' => 'Lien de vérification invalide.'], 403);
+    }
+    if ($user->hasVerifiedEmail()) {
+        return response()->json(['success' => true, 'message' => 'Email déjà vérifié.']);
+    }
+    $user->markEmailAsVerified();
+    return response()->json(['success' => true, 'message' => 'Email vérifié avec succès.']);
+})->middleware(['auth:sanctum', 'signed'])->name('verification.verify');
 Route::get('/metadata/registration', [MetadataController::class, 'getRegistrationMetadata']);
 
 Route::get('/cors-test', function () {
     return response()->json(['message' => 'CORS works!']);
 });
 
-// ROUTE TEMPORAIRE - Reset mot de passe (À SUPPRIMER APRÈS USAGE)
-Route::get('/temp-reset-pwd', function (\Illuminate\Http\Request $request) {
-    $secret = $request->query('secret');
-    if ($secret !== 'ARS_RESET_2024_SECRET') {
-        abort(403, 'Accès refusé');
-    }
-    $email  = $request->query('email');
-    $newPwd = $request->query('pwd');
-    if (!$email || !$newPwd) {
-        return response()->json(['error' => 'Paramètres manquants: email, pwd'], 422);
-    }
-    $user = \App\Models\User::where('email', $email)->first();
-    if (!$user) {
-        return response()->json(['error' => 'Utilisateur introuvable'], 404);
-    }
-    $user->password = \Illuminate\Support\Facades\Hash::make($newPwd);
-    // Marquer l'email comme vérifié si ce n'est pas déjà le cas
-    if (!$user->email_verified_at) {
-        $user->email_verified_at = now();
-    }
-    $user->save();
-    return response()->json(['success' => true, 'message' => "Mot de passe réinitialisé pour {$user->email}"]);
-});
-
-// ROUTE POUR NETTOYER LA DB EN PROD (Remplacer SECRET_KEY par une valeur sure)
-Route::get('/nuclear-clean-db', function (Request $request) {
-    if ($request->query('secret') !== 'ARS_CLEAN_2024') {
-        return response()->json(['error' => 'Secret incorrect'], 403);
-    }
-    
-    try {
-        \App\Models\Document::truncate();
-        \App\Models\Professionnel::query()->update([
-            'photo_profil_path' => null, 
-            'diplome_path' => null, 
-            'certificat_medical_path' => null, 
-            'permis_conduire_path' => null
-        ]);
-        \App\Models\Structure::query()->update([
-            'contrat_prestation_path' => null, 
-            'plan_locaux_path' => null, 
-            'reglement_interieur_path' => null
-        ]);
-        return response()->json(['success' => true, 'message' => 'Base de données de production nettoyée avec succès']);
-    } catch (\Exception $e) {
-        return response()->json(['error' => $e->getMessage()], 500);
-    }
-});
+// Routes temporaires supprimées pour raisons de sécurité
 
 // Route pour servir les fichiers avec les headers CORS
 // Les noms de fichiers (UUID) sont imprédictibles, la route est publique pour les balises <img>.
