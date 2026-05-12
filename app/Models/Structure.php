@@ -17,6 +17,9 @@ class Structure extends Model
         'adresse',
         'code_postal',
         'ville',
+        'contrat_prestation_path',
+        'plan_locaux_path',
+        'reglement_interieur_path',
     ];
 
     protected $casts = [

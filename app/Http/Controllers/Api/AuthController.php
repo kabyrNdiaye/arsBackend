@@ -483,9 +483,12 @@ class AuthController extends Controller
         $user = $request->user();
 
         $validator = Validator::make($request->all(), [
+            'prenom'                   => 'nullable|string|max:255',
+            'nom'                      => 'nullable|string|max:255',
             'firstName'                => 'nullable|string|max:255',
             'lastName'                 => 'nullable|string|max:255',
             'email'                    => ['nullable', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'telephone'                => 'nullable|string|max:20',
             'phone'                    => 'nullable|string|max:20',
             'adresse'                  => 'nullable|string',
             'code_postal'              => 'nullable|string|max:10',
@@ -508,33 +511,58 @@ class AuthController extends Controller
             return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
 
-        // ── Mise à jour de l'utilisateur ────────────────────────────────────
-        if ($request->filled('firstName'))  $user->prenom    = $request->firstName;
-        if ($request->filled('lastName'))   $user->nom       = $request->lastName;
-        if ($request->filled('email'))      $user->email     = $request->email;
-        if ($request->filled('phone'))      $user->telephone = $request->phone;
-        if ($request->filled('adresse'))    $user->adresse   = $request->adresse;
-        if ($request->filled('code_postal')) $user->code_postal = $request->code_postal;
-        if ($request->filled('ville'))      $user->ville     = $request->ville;
-        $user->save();
+        // Accepter prenom/nom OU firstName/lastName (compatibilité Flutter)
+        $prenom = $request->prenom ?? $request->firstName ?? $user->prenom;
+        $nom    = $request->nom    ?? $request->lastName  ?? $user->nom;
+        $tel    = $request->telephone ?? $request->phone  ?? $user->telephone;
 
-        // ── Mise à jour de la structure (si client) ─────────────────────────
-        if ($user->role === 'client' && $user->structure) {
-            $structureData = [];
-            if ($request->filled('adresse'))                 $structureData['adresse']                = $request->adresse;
-            if ($request->filled('code_postal'))             $structureData['code_postal']            = $request->code_postal;
-            if ($request->filled('ville'))                   $structureData['ville']                  = $request->ville;
-            if ($request->filled('nom_etablissement'))       $structureData['nom_etablissement']      = $request->nom_etablissement;
-            if ($request->filled('telephone_etablissement')) $structureData['telephone_etablissement'] = $request->telephone_etablissement;
-            if ($request->filled('type_etablissement'))      $structureData['type_etablissement']     = $request->type_etablissement;
-            if ($request->filled('capacite'))                $structureData['capacite']               = $request->capacite;
-            if ($request->filled('fonction'))                $structureData['fonction']               = $request->fonction;
+        // ── Log de debug ────────────────────────────────────────────────────
+        Log::info('UPDATE PROFILE DEBUG', [
+            'user_id'           => $user->id,
+            'role'              => $user->role,
+            'nom_etablissement' => $request->nom_etablissement,
+            'type_etablissement'=> $request->type_etablissement,
+            'adresse'           => $request->adresse,
+            'structure_exists'  => $user->structure ? 'YES id=' . $user->structure->id : 'NO - NULL',
+            'all_keys'          => array_keys($request->all()),
+        ]);
 
-            if (!empty($structureData)) {
-                $user->structure->update($structureData);
-            }
+        // ── 1. Mise à jour table users ───────────────────────────────────────
+        $user->update([
+            'prenom'     => $prenom,
+            'nom'        => $nom,
+            'email'      => $request->email      ?? $user->email,
+            'telephone'  => $tel,
+            'adresse'    => $request->adresse    ?? $user->adresse,
+            'code_postal'=> $request->code_postal ?? $user->code_postal,
+            'ville'      => $request->ville      ?? $user->ville,
+        ]);
 
-            // ── Documents clients (contrat, plan, règlement) ─────────────────
+        // ── 2. Mise à jour table structures (updateOrCreate) ─────────────────
+        if ($user->role === 'client') {
+            $structureData = array_filter([
+                'nom_etablissement'       => $request->nom_etablissement,
+                'type_etablissement'      => $request->type_etablissement,
+                'adresse'                 => $request->adresse,
+                'code_postal'             => $request->code_postal,
+                'ville'                   => $request->ville,
+                'telephone_etablissement' => $request->telephone_etablissement,
+                'capacite'                => $request->capacite,
+                'fonction'                => $request->fonction,
+            ], fn($v) => $v !== null);
+
+            $structure = Structure::updateOrCreate(
+                ['user_id' => $user->id],
+                $structureData
+            );
+
+            Log::info('STRUCTURE UPDATED', [
+                'structure_id'      => $structure->id,
+                'nom_etablissement' => $structure->nom_etablissement,
+                'was_created'       => $structure->wasRecentlyCreated,
+            ]);
+
+            // ── Documents clients ────────────────────────────────────────────
             $clientDocFields = [
                 'contrat_prestation_path' => 'Contrat de prestation',
                 'plan_locaux_path'        => 'Plan des locaux',
@@ -545,12 +573,12 @@ class AuthController extends Controller
                     $file     = $request->file($field);
                     $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
                     $path     = $file->storeAs('documents/clients', $filename, 'public');
-                    $oldDocs  = $user->structure->documents()->whereIn('nom', [$field, $displayName])->get();
+                    $oldDocs  = $structure->documents()->whereIn('nom', [$field, $displayName])->get();
                     foreach ($oldDocs as $oldDoc) {
                         Storage::disk('public')->delete($oldDoc->cheminFichier);
                         $oldDoc->delete();
                     }
-                    $user->structure->documents()->create([
+                    $structure->documents()->create([
                         'nom'           => $displayName,
                         'type'          => 'document',
                         'cheminFichier' => $path,
@@ -560,32 +588,28 @@ class AuthController extends Controller
             }
         }
 
-        // ── Mise à jour du professionnel (si professionnel) ─────────────────
+        // ── 3. Mise à jour table professionnels ──────────────────────────────
         if ($user->role === 'professionnel' && $user->professionnel) {
-            $proData = [];
-            if ($request->filled('adresse'))    $proData['adresse']    = $request->adresse;
-            if ($request->filled('code_postal')) $proData['code_postal'] = $request->code_postal;
-            if ($request->filled('ville'))      $proData['ville']      = $request->ville;
-            if ($request->filled('fonction'))   $proData['fonction']   = $request->fonction;
+            $proData = array_filter([
+                'adresse'    => $request->adresse,
+                'code_postal'=> $request->code_postal,
+                'ville'      => $request->ville,
+                'fonction'   => $request->fonction,
+            ], fn($v) => $v !== null);
 
             if (!empty($proData)) {
                 $user->professionnel->update($proData);
             }
         }
 
-        \Illuminate\Support\Facades\Log::info('Update Profile Request:', [
-            'has_file' => $request->hasFile('photo_profil_path'),
-            'file_valid' => $request->hasFile('photo_profil_path') && $request->file('photo_profil_path')->isValid(),
-        ]);
-
-        // ── Photo de profil ─────────────────────────────────────────────────
+        // ── 4. Photo de profil ───────────────────────────────────────────────
         if ($request->hasFile('photo_profil_path') && $request->file('photo_profil_path')->isValid()) {
-            $file     = $request->file('photo_profil_path');
-            $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-            $path     = $file->storeAs('images/profils', $filename, 'public');
+            $file      = $request->file('photo_profil_path');
+            $filename  = Str::uuid() . '.' . $file->getClientOriginalExtension();
+            $path      = $file->storeAs('images/profils', $filename, 'public');
             $photoName = 'Photo de profil';
+            $profile   = $user->role === 'professionnel' ? $user->professionnel : $user->structure;
 
-            $profile = $user->role === 'professionnel' ? $user->professionnel : $user->structure;
             if ($profile) {
                 $profile->documents()->whereIn('nom', ['photo_profil_path', $photoName])->delete();
                 $profile->documents()->create(['nom' => $photoName, 'type' => 'document', 'cheminFichier' => $path, 'statut' => 'actif']);
@@ -594,20 +618,18 @@ class AuthController extends Controller
             $user->documents()->create(['nom' => $photoName, 'type' => 'document', 'cheminFichier' => $path, 'statut' => 'actif']);
         }
 
-        // ── Documents professionnels ─────────────────────────────────────────
+        // ── 5. Documents professionnels ──────────────────────────────────────
         $documentFields = [
             'diplome_path'            => 'Diplôme',
             'certificat_medical_path' => 'Certificat médical',
             'permis_conduire_path'    => 'Permis de conduire',
         ];
-
         foreach ($documentFields as $field => $displayName) {
             if ($request->hasFile($field) && $request->file($field)->isValid()) {
                 $file     = $request->file($field);
                 $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
                 $path     = $file->storeAs('documents/professionnels', $filename, 'public');
                 $profile  = $user->role === 'professionnel' ? $user->professionnel : null;
-
                 if ($profile) {
                     $oldDocs = $profile->documents()->whereIn('nom', [$field, $displayName])->get();
                     foreach ($oldDocs as $oldDoc) {
@@ -622,7 +644,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Profil mis à jour avec succès',
-            'user'    => new UserResource($user->fresh(['structure.documents', 'professionnel.documents', 'documents'])),
+            'user'    => new UserResource($user->fresh()->load(['structure.documents', 'professionnel.documents', 'documents'])),
         ]);
     }
 
