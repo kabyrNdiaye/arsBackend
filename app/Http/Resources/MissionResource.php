@@ -118,6 +118,7 @@ class MissionResource extends JsonResource
                 return $this->professionnel->user;
             })),
             'incidents' => $this->whenLoaded('incidents'),
+            'remuneration' => $this->remuneration,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

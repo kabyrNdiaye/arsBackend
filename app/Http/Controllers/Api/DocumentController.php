@@ -24,7 +24,11 @@ class DocumentController extends Controller
         }
 
         $baseUrl  = url('/');
-        $fixedKeys   = ['diplome_path', 'certificat_medical_path', 'permis_conduire_path', 'Curriculum Vitae(CV)', 'Carte d\'identité', 'Diplôme de cuisine'];
+        $fixedKeys   = [
+            'diplome_path', 'certificat_medical_path', 'permis_conduire_path', 
+            'cv_path', 'identite_path',
+            'Curriculum Vitae(CV)', 'Carte d\'identité', 'Diplôme de cuisine'
+        ];
         $excludeKeys = ['photo_profil_path']; // jamais dans la liste des documents
         $allDocs     = $profile->documents()->orderBy('created_at', 'asc')->get();
 

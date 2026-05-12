@@ -44,7 +44,8 @@ class Mission extends Model
         'commentaires_admin',
         'horaire_fin',
         'code_entree',
-        'code_cuisine'
+        'code_cuisine',
+        'remuneration'
     ];
 
     protected $casts = [
