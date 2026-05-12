@@ -63,7 +63,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return new \App\Http\Resources\UserResource($request->user());
     });
+    // PUT natif + POST avec _method=PUT (multipart Flutter)
     Route::put('/user', [AuthController::class, 'updateProfile']);
+    Route::post('/user', [AuthController::class, 'updateProfile']);
     Route::put('/user/password', [AuthController::class, 'changePassword']);
     Route::get('/profile', [AuthController::class, 'profile']);
 
