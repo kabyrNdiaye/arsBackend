@@ -461,6 +461,23 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Récupérer une structure spécifique par son user_id (Admin uniquement)
+     */
+    public function showStructure(User $user)
+    {
+        if ($user->role !== 'client') {
+            return response()->json(['success' => false, 'message' => 'Cet utilisateur n\'est pas une structure.'], 404);
+        }
+
+        $user->load(['structure.documents', 'documents']);
+
+        return response()->json([
+            'success' => true,
+            'data'    => new UserResource($user),
+        ]);
+    }
+
     public function updateProfile(Request $request)
     {
         $user = $request->user();
@@ -482,6 +499,9 @@ class AuthController extends Controller
             'diplome_path'             => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
             'certificat_medical_path'  => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
             'permis_conduire_path'     => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'contrat_prestation_path'  => 'nullable|file|mimes:pdf,jpg,png|max:5120',
+            'plan_locaux_path'         => 'nullable|file|mimes:pdf,jpg,png|max:5120',
+            'reglement_interieur_path' => 'nullable|file|mimes:pdf,jpg,png|max:5120',
         ]);
 
         if ($validator->fails()) {
@@ -512,6 +532,31 @@ class AuthController extends Controller
 
             if (!empty($structureData)) {
                 $user->structure->update($structureData);
+            }
+
+            // ── Documents clients (contrat, plan, règlement) ─────────────────
+            $clientDocFields = [
+                'contrat_prestation_path' => 'Contrat de prestation',
+                'plan_locaux_path'        => 'Plan des locaux',
+                'reglement_interieur_path'=> 'Règlement intérieur',
+            ];
+            foreach ($clientDocFields as $field => $displayName) {
+                if ($request->hasFile($field) && $request->file($field)->isValid()) {
+                    $file     = $request->file($field);
+                    $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
+                    $path     = $file->storeAs('documents/clients', $filename, 'public');
+                    $oldDocs  = $user->structure->documents()->whereIn('nom', [$field, $displayName])->get();
+                    foreach ($oldDocs as $oldDoc) {
+                        Storage::disk('public')->delete($oldDoc->cheminFichier);
+                        $oldDoc->delete();
+                    }
+                    $user->structure->documents()->create([
+                        'nom'           => $displayName,
+                        'type'          => 'document',
+                        'cheminFichier' => $path,
+                        'statut'        => 'actif',
+                    ]);
+                }
             }
         }
 
