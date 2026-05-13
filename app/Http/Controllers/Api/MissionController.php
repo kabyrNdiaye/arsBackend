@@ -412,6 +412,96 @@ class MissionController extends Controller
     }
 
     /**
+     * Terminer une mission via QR Code (scanné par la structure)
+     * POST /api/missions/{id}/complete-by-qr
+     *
+     * Payload Flutter :
+     * {
+     *   "mission_id":      35,
+     *   "professionnel_id": 3,
+     *   "structure_id":     2,
+     *   "timestamp":       1715000000,
+     *   "expires_at":      1715014400
+     * }
+     */
+    public function completeByQr(Request $request, Mission $mission)
+    {
+        $user = $request->user();
+
+        // Seule la structure propriétaire peut scanner
+        if (!$user->structure || $user->structure->id !== $mission->structure_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seule la structure concernée peut valider cette fin de mission.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'mission_id'       => 'required|integer',
+            'professionnel_id' => 'required|integer',
+            'structure_id'     => 'required|integer',
+            'timestamp'        => 'required|integer',
+            'expires_at'       => 'required|integer',
+        ]);
+
+        // ── Vérification de cohérence du QR ─────────────────────────────────
+        if ((int)$validated['mission_id'] !== $mission->id) {
+            return response()->json(['success' => false, 'message' => 'QR Code invalide : mission incorrecte.'], 422);
+        }
+
+        if ((int)$validated['structure_id'] !== $mission->structure_id) {
+            return response()->json(['success' => false, 'message' => 'QR Code invalide : structure incorrecte.'], 422);
+        }
+
+        if ($mission->professionnel_id && (int)$validated['professionnel_id'] !== $mission->professionnel_id) {
+            return response()->json(['success' => false, 'message' => 'QR Code invalide : professionnel incorrect.'], 422);
+        }
+
+        // ── Vérification d'expiration (4h) ───────────────────────────────────
+        if (now()->timestamp > (int)$validated['expires_at']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'QR Code expiré. Le professionnel doit en générer un nouveau.',
+            ], 422);
+        }
+
+        // ── Vérification du statut ───────────────────────────────────────────
+        if ($mission->statut === Mission::STATUS_FINISHED) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Mission déjà terminée.',
+                'data'    => new MissionResource($mission),
+            ]);
+        }
+
+        if (!in_array($mission->statut, [Mission::STATUS_IN_PROGRESS, Mission::STATUS_CONFIRMED])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cette mission ne peut pas être terminée (statut : ' . $mission->statut . ').',
+            ], 400);
+        }
+
+        // ── Terminer la mission ──────────────────────────────────────────────
+        $mission->update([
+            'statut'      => Mission::STATUS_FINISHED,
+            'horaire_fin' => now(),
+        ]);
+
+        \Illuminate\Support\Facades\Log::info('Mission terminée par QR Code', [
+            'mission_id'       => $mission->id,
+            'structure_id'     => $mission->structure_id,
+            'professionnel_id' => $mission->professionnel_id,
+            'scanned_by'       => $user->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Mission terminée avec succès via QR Code.',
+            'data'    => new MissionResource($mission->fresh()),
+        ]);
+    }
+
+    /**
      * Terminer une mission (Côté Professionnel)
      */
     public function finish(Request $request, Mission $mission)

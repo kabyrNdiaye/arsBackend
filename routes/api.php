@@ -72,6 +72,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('missions/{mission}/process', [MissionController::class, 'process']);
     Route::put('missions/{mission}/checklist', [MissionController::class, 'updateChecklist']);
     Route::post('missions/{mission}/finish', [MissionController::class, 'finish']);
+    Route::post('missions/{mission}/complete-by-qr', [MissionController::class, 'completeByQr']);
     Route::post('missions/{mission}/accept', [MissionController::class, 'accept']);
     Route::post('missions/{mission}/reject', [MissionController::class, 'reject']);
     Route::post('missions/{mission}/cancel', [MissionController::class, 'cancel']);
