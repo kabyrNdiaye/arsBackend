@@ -487,6 +487,37 @@ class MissionController extends Controller
             'horaire_fin' => now(),
         ]);
 
+        // ── Transfert Automatique via Stripe Connect ─────────────────────────
+        try {
+            $proUser = $mission->professionnel->user ?? null;
+            if ($proUser && $proUser->stripe_account_id && !empty($mission->remuneration)) {
+                
+                // Convertir la rémunération (string) en centimes (entier)
+                $remunerationString = str_replace(',', '.', $mission->remuneration);
+                // Si la chaîne contient d'autres caractères (ex: "€"), on garde que les chiffres
+                $remunerationClean = preg_replace('/[^0-9.]/', '', $remunerationString);
+                $remunerationFloat = (float) $remunerationClean;
+                $remunerationCents = (int) round($remunerationFloat * 100);
+
+                if ($remunerationCents > 0) {
+                    \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
+                    $transfer = \Stripe\Transfer::create([
+                        'amount' => $remunerationCents,
+                        'currency' => 'eur',
+                        'destination' => $proUser->stripe_account_id,
+                        'description' => "Paiement pour la mission #" . $mission->id,
+                        'metadata' => [
+                            'mission_id' => $mission->id,
+                        ],
+                    ]);
+                    \Illuminate\Support\Facades\Log::info("Transfert Stripe réussi pour la mission {$mission->id}", collect($transfer)->toArray());
+                }
+            }
+        } catch (\Exception $e) {
+            // On catch l'erreur pour ne pas empêcher la validation de la mission si le paiement échoue (on pourra le relancer manuellement)
+            \Illuminate\Support\Facades\Log::error("Erreur lors du transfert Stripe (Mission {$mission->id}): " . $e->getMessage());
+        }
+
         \Illuminate\Support\Facades\Log::info('Mission terminée par QR Code', [
             'mission_id'       => $mission->id,
             'structure_id'     => $mission->structure_id,
@@ -540,6 +571,101 @@ class MissionController extends Controller
     }
 
     /**
+     * Déclencher manuellement le paiement Stripe (Admin)
+     * POST /api/missions/{id}/pay
+     */
+    public function pay(Request $request, Mission $mission)
+    {
+        try {
+            $proUser = $mission->professionnel->user ?? null;
+
+            if (!$proUser || !$proUser->stripe_account_id) {
+                return response()->json(['success' => false, 'message' => 'Le professionnel n\'a pas de compte Stripe configuré.'], 400);
+            }
+
+            if (empty($mission->remuneration)) {
+                return response()->json(['success' => false, 'message' => 'Aucune rémunération définie pour cette mission.'], 400);
+            }
+
+            $remunerationFloat = (float) preg_replace('/[^0-9.]/', '', str_replace(',', '.', $mission->remuneration));
+            $remunerationCents = (int) round($remunerationFloat * 100);
+
+            if ($remunerationCents <= 0) {
+                return response()->json(['success' => false, 'message' => 'Montant invalide.'], 400);
+            }
+
+            \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
+            $transfer = \Stripe\Transfer::create([
+                'amount'      => $remunerationCents,
+                'currency'    => 'eur',
+                'destination' => $proUser->stripe_account_id,
+                'description' => "Paiement mission #{$mission->id}",
+                'metadata'    => ['mission_id' => $mission->id],
+            ]);
+
+            \Illuminate\Support\Facades\Log::info("Paiement manuel déclenché pour mission {$mission->id}", ['transfer_id' => $transfer->id]);
+
+            return response()->json([
+                'success'     => true,
+                'message'     => 'Paiement déclenché avec succès.',
+                'transfer_id' => $transfer->id,
+                'amount'      => $remunerationFloat,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Créer une session Stripe Checkout pour que la structure paie la mission
+     * POST /api/missions/{id}/checkout
+     */
+    public function createCheckout(Request $request, Mission $mission)
+    {
+        if (empty($mission->remuneration)) {
+            return response()->json(['success' => false, 'message' => 'Aucune rémunération définie pour cette mission.'], 400);
+        }
+
+        $remunerationFloat = (float) preg_replace('/[^0-9.]/', '', str_replace(',', '.', $mission->remuneration));
+        $remunerationCents = (int) round($remunerationFloat * 100);
+
+        if ($remunerationCents <= 0) {
+            return response()->json(['success' => false, 'message' => 'Montant invalide.'], 400);
+        }
+
+        try {
+            \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
+
+            $session = \Stripe\Checkout\Session::create([
+                'payment_method_types' => ['card'],
+                'line_items' => [[
+                    'price_data' => [
+                        'currency'     => 'eur',
+                        'unit_amount'  => $remunerationCents,
+                        'product_data' => [
+                            'name'        => 'Mission ARS #' . $mission->id,
+                            'description' => 'Rémunération professionnel - ' . ($mission->structure->nom_etablissement ?? 'Structure'),
+                        ],
+                    ],
+                    'quantity' => 1,
+                ]],
+                'mode'        => 'payment',
+                'success_url' => env('APP_URL') . '/api/stripe/checkout/success?session_id={CHECKOUT_SESSION_ID}&mission_id=' . $mission->id,
+                'cancel_url'  => env('APP_URL') . '/api/stripe/checkout/cancel?mission_id=' . $mission->id,
+                'metadata'    => ['mission_id' => $mission->id],
+            ]);
+
+            return response()->json([
+                'success'    => true,
+                'url'        => $session->url,
+                'session_id' => $session->id,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
      * Annuler une mission acceptée (Côté Professionnel)
      */
     public function cancel(Request $request, Mission $mission)
@@ -568,7 +694,10 @@ class MissionController extends Controller
             $isLate = $horaire->diffInHours(now(), false) > -24; // true si moins de 24h
         }
 
-        $professionnelName = $user->name ?? ($user->professionnel->prenom . ' ' . $user->professionnel->nom);
+        $professionnelName = trim(($user->prenom ?? '') . ' ' . ($user->nom ?? ''));
+        if (empty($professionnelName)) {
+            $professionnelName = $user->name ?? 'Professionnel inconnu';
+        }
 
         // Libérer la mission
         $mission->update([
@@ -581,6 +710,15 @@ class MissionController extends Controller
             ->where('professionnel_id', $user->professionnel->id)
             ->delete();
 
+        // Enregistrer l'annulation dans l'historique
+        \App\Models\MissionCancellation::create([
+            'mission_id'       => $mission->id,
+            'professionnel_nom'=> $professionnelName,
+            'motif'            => $validated['motif'],
+            'is_late'          => $isLate,
+            'mission_nom'      => $mission->structure->nom_etablissement ?? 'Mission #' . $mission->id,
+        ]);
+
         // Notifier tous les admins
         $admins = User::where('role', 'admin')->get();
         foreach ($admins as $admin) {
@@ -592,6 +730,30 @@ class MissionController extends Controller
             'is_late' => $isLate,
             'message' => 'Mission annulée. L\'administrateur a été notifié.',
         ]);
+    }
+
+    /**
+     * Lister toutes les annulations (Admin)
+     */
+    public function cancellations(Request $request)
+    {
+        $cancellations = \App\Models\MissionCancellation::with('mission')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($c) {
+                return [
+                    'id'            => $c->id,
+                    'mission_id'    => $c->mission_id,
+                    '_mission_name' => $c->mission_nom ?? 'Mission #' . $c->mission_id,
+                    'sender_name'   => $c->professionnel_nom ?? 'Professionnel',
+                    'content'       => $c->motif,
+                    'is_late'       => $c->is_late,
+                    'created_at'    => $c->created_at,
+                    'status'        => $c->is_late ? 'Annulation tardive' : 'Annulé',
+                ];
+            });
+
+        return response()->json(['data' => $cancellations]);
     }
 
     /**

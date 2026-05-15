@@ -18,7 +18,7 @@ class StatsController extends Controller
     public function getAdminStats()
     {
         $today = Carbon::today();
-        $missionsToday = Mission::whereDate('date', $today)->count();
+        $missionsToday = Mission::whereDate('horaire_mission', $today)->count();
         $totalMissions = Mission::count();
         $avgSatisfaction = Retour::avg('note') ?? 0;
         $satisfactionPercent = $avgSatisfaction > 0 ? round(($avgSatisfaction / 5) * 100) : 100;

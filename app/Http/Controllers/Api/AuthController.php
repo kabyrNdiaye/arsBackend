@@ -540,16 +540,24 @@ class AuthController extends Controller
 
         // ── 2. Mise à jour table structures (updateOrCreate) ─────────────────
         if ($user->role === 'client') {
-            $structureData = array_filter([
-                'nom_etablissement'       => $request->nom_etablissement,
-                'type_etablissement'      => $request->type_etablissement,
-                'adresse'                 => $request->adresse,
-                'code_postal'             => $request->code_postal,
-                'ville'                   => $request->ville,
-                'telephone_etablissement' => $request->telephone_etablissement,
-                'capacite'                => $request->capacite,
-                'fonction'                => $request->fonction,
-            ], fn($v) => $v !== null);
+            // Construire les données structure en incluant tous les champs présents dans la requête
+            // (même ceux avec valeur vide string), sans filtrer avec array_filter qui supprime "0", "", false
+            $structureData = [];
+            $structureFields = [
+                'nom_etablissement',
+                'type_etablissement',
+                'adresse',
+                'code_postal',
+                'ville',
+                'telephone_etablissement',
+                'capacite',
+                'fonction',
+            ];
+            foreach ($structureFields as $field) {
+                if ($request->has($field)) {
+                    $structureData[$field] = $request->input($field);
+                }
+            }
 
             $structure = Structure::updateOrCreate(
                 ['user_id' => $user->id],
@@ -772,3 +780,4 @@ class AuthController extends Controller
         ]);
     }
 }
+

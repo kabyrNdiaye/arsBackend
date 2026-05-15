@@ -25,7 +25,7 @@ class FeedbackController extends Controller
                 ], 401);
             }
 
-            $query = Feedback::with('user:id,name,email');
+            $query = Feedback::with(['user:id,name,email', 'mission.structure', 'mission.professionnel.user']);
 
             // Filtrer par type si fourni
             if ($request->has('type')) {

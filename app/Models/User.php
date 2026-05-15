@@ -28,6 +28,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'adresse',
         'code_postal',
         'ville',
+        'stripe_account_id',
+        'stripe_onboarding_complete',
     ];
 
 
@@ -52,6 +54,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'specialites' => 'array', // Cast JSON to array
+            'stripe_onboarding_complete' => 'boolean',
         ];
     }
 

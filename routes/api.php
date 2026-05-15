@@ -46,6 +46,15 @@ Route::get('/cors-test', function () {
 // Les noms de fichiers (UUID) sont imprédictibles, la route est publique pour les balises <img>.
 Route::get('/media/{path}', [FileController::class, 'serve'])->where('path', '.*');
 
+use App\Http\Controllers\Api\StripeController;
+
+// ==================== STRIPE REDIRECTS ====================
+Route::get('/stripe/success', [StripeController::class, 'returnSuccess']);
+Route::get('/stripe/refresh', [StripeController::class, 'returnRefresh']);
+Route::get('/stripe/checkout/success', [StripeController::class, 'checkoutSuccess']);
+Route::get('/stripe/checkout/cancel', [StripeController::class, 'checkoutCancel']);
+Route::post('/stripe/webhook', [StripeController::class, 'webhook']);
+
 Route::middleware('auth:sanctum')->group(function () {
 
     // ==================== ROUTES ADMIN ====================
@@ -69,6 +78,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/user/password', [AuthController::class, 'changePassword']);
     Route::get('/profile', [AuthController::class, 'profile']);
 
+    Route::get('missions/cancellations', [MissionController::class, 'cancellations']);
     Route::put('missions/{mission}/process', [MissionController::class, 'process']);
     Route::put('missions/{mission}/checklist', [MissionController::class, 'updateChecklist']);
     Route::post('missions/{mission}/finish', [MissionController::class, 'finish']);
@@ -76,6 +86,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('missions/{mission}/accept', [MissionController::class, 'accept']);
     Route::post('missions/{mission}/reject', [MissionController::class, 'reject']);
     Route::post('missions/{mission}/cancel', [MissionController::class, 'cancel']);
+    Route::post('missions/{mission}/pay', [MissionController::class, 'pay']);
+    Route::post('missions/{mission}/checkout', [MissionController::class, 'createCheckout']);
     Route::get('missions/{mission}/messages', [ChatController::class, 'index']);
     Route::post('missions/{mission}/messages', [ChatController::class, 'store']);
     Route::put('missions/{mission}/messages/read', [ChatController::class, 'markAsRead']);
@@ -97,6 +109,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('incidents', IncidentController::class);
     Route::apiResource('retours', RetourController::class);
     Route::apiResource('menus', MenuController::class);
+    
+    // ==================== STRIPE ONBOARDING ====================
+    Route::post('/stripe/account', [StripeController::class, 'createAccount']);
+    Route::get('/stripe/status', [StripeController::class, 'accountStatus']);
+    Route::get('/stripe/dashboard', [StripeController::class, 'dashboardLink']);
     
     // ==================== FEEDBACKS (Retours globaux) ====================
     Route::post('/feedbacks', [FeedbackController::class, 'store']);

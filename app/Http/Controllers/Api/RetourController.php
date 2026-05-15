@@ -13,7 +13,7 @@ class RetourController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Retour::with('mission');
+        $query = Retour::with(['mission.structure', 'mission.professionnel.user']);
 
         if ($request->has('mission_id')) {
             $query->where('mission_id', $request->mission_id);
